@@ -1,0 +1,6 @@
+{
+  "name": "Control de Streaming - Ventas y Rentas",
+  "description": "Sistema completo para gestión de cuentas, perfiles, proveedores, clientes, vencimientos y suscripciones de streaming.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

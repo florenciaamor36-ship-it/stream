@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/* Themes Custom Styles */
+:root {
+  --color-brand: #e50914;
+}
+
+.theme-dark-red {
+  --color-brand: #e50914;
+}
+
+.theme-dark-emerald {
+  --color-brand: #10b981;
+}
+
+.theme-dark-violet {
+  --color-brand: #8b5cf6;
+}
+
+.theme-dark-blue {
+  --color-brand: #3b82f6;
+}
+
+.theme-dark-gold {
+  --color-brand: #f59e0b;
+}
+
+.theme-dark-rose {
+  --color-brand: #f43f5e;
+}
+
+/* Light Theme Overrides */
+html.theme-light,
+body.theme-light {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html.theme-light .bg-zinc-950,
+html.theme-light .bg-zinc-900 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.theme-light .bg-zinc-800,
+html.theme-light .bg-zinc-800\/80,
+html.theme-light .bg-zinc-800\/60,
+html.theme-light .bg-zinc-800\/30 {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+}
+
+html.theme-light .border-zinc-800,
+html.theme-light .border-zinc-800\/80,
+html.theme-light .border-zinc-800\/60,
+html.theme-light .border-zinc-700 {
+  border-color: #cbd5e1 !important;
+}
+
+html.theme-light .text-white {
+  color: #0f172a !important;
+}
+
+html.theme-light .text-zinc-400,
+html.theme-light .text-zinc-500 {
+  color: #64748b !important;
+}
+
+html.theme-light .text-zinc-300,
+html.theme-light .text-zinc-200 {
+  color: #334155 !important;
+}
+
+html.theme-light input,
+html.theme-light select,
+html.theme-light textarea {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}

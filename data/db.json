@@ -1,0 +1,94 @@
+{
+  "users": [
+    {
+      "id": "user_admin_01",
+      "email": "florenciaamor36@gmail.com",
+      "password": "Selexionar1",
+      "name": "Florencia Amor (Admin)",
+      "createdAt": "2026-07-28T18:00:00.000Z",
+      "gracePeriodUntil": "2026-08-01T18:00:00.000Z",
+      "subscriptionUntil": "2027-08-28T18:00:00.000Z",
+      "tokensRedeemed": 99,
+      "isAdmin": true,
+      "hasAcceptedTerms": true
+    }
+  ],
+  "providers": [],
+  "accounts": [],
+  "customers": [],
+  "sales": [],
+  "templates": [
+    {
+      "id": "tmpl_welcome",
+      "userId": "user_admin_01",
+      "name": "Entrega de Credenciales (Bienvenida)",
+      "type": "welcome_credentials",
+      "isDefault": true,
+      "body": "🍿 *¡Hola {cliente}! Aquí están los accesos a tu pantalla de {servicio}* 🍿\n\n📧 *Correo:* {email_cuenta}\n🔑 *Clave:* {password}\n👤 *Perfil:* {perfil}\n📌 *PIN:* {pin}\n📅 *Fecha de Vencimiento:* {fecha_vencimiento}\n\n⚠️ *Reglas importantes:*\n1. No modifiques la contraseña ni el correo de la cuenta.\n2. Ingresa únicamente al perfil asignado ({perfil}) con tu PIN ({pin}).\n3. Disfruta tu contenido sin límites. ¡Gracias por tu compra!"
+    },
+    {
+      "id": "tmpl_reminder_soon",
+      "userId": "user_admin_01",
+      "name": "Recordatorio de Vencimiento Próximo (3 días)",
+      "type": "reminder_soon",
+      "isDefault": true,
+      "body": "👋 *Hola {cliente}, recordatorio de tu suscripción de {servicio}*\n\nTe informamos que tu perfil *{perfil}* vencerá el *{fecha_vencimiento}* (te quedan *{dias_restantes} días* de servicio).\n\n💰 *Monto de renovación:* {precio}\n💳 *Medio de pago:* {metodo_pago}\n\n¿Deseas renovar para mantener tu perfil y PIN activo sin interrupciones? Responde a este mensaje para coordinar la renovación. ¡Saludos!"
+    },
+    {
+      "id": "tmpl_expiration_today",
+      "userId": "user_admin_01",
+      "name": "Aviso de Vencimiento HOY",
+      "type": "expiration_today",
+      "isDefault": true,
+      "body": "🚨 *¡Hola {cliente}! Tu cuenta de {servicio} vence HOY* 🚨\n\nTu perfil *{perfil}* vence el día de hoy (*{fecha_vencimiento}*).\n\nPara evitar que el perfil o PIN sea reasignado, por favor confirma tu renovación enviando el comprobante de *{precio}*.\n\nSi ya realizaste el pago, por favor envía tu captura de pantalla por este medio. ¡Muchas gracias!"
+    },
+    {
+      "id": "tmpl_expired_notice",
+      "userId": "user_admin_01",
+      "name": "Aviso de Servicio Vencido / Suspendido",
+      "type": "expired_notice",
+      "isDefault": true,
+      "body": "⛔ *Servicio Suspendido - {servicio}*\n\nHola {cliente}, tu perfil *{perfil}* ha vencido. Las credenciales o el PIN han sido deshabilitados.\n\nSi deseas reactivar tu pantalla hoy mismo, escríbenos para brindarte los datos de pago ({precio}). ¡Estamos atentos!"
+    },
+    {
+      "id": "tmpl_password_change",
+      "userId": "user_admin_01",
+      "name": "Notificación de Cambio de Contraseña",
+      "type": "password_change",
+      "isDefault": false,
+      "body": "🔐 *Actualización de Claves de {servicio}*\n\nHola {cliente}, hemos actualizado la clave de seguridad de tu cuenta de {servicio}.\n\n📧 *Correo:* {email_cuenta}\n🔑 *Nueva Clave:* {password}\n👤 *Tu Perfil:* {perfil} (PIN: {pin})\n\nTu fecha de vencimiento se mantiene igual: *{fecha_vencimiento}*."
+    }
+  ],
+  "tokens": [
+    {
+      "id": "tok_01",
+      "code": "STRM-30D-DEMO-VIP1",
+      "days": 30,
+      "isUsed": true,
+      "usedByEmail": "admin@streaming.com",
+      "usedAt": "2026-07-28T18:00:00.000Z",
+      "createdAt": "2026-07-28T18:00:00.000Z"
+    },
+    {
+      "id": "tok_02",
+      "code": "STRM-30D-7788-9900",
+      "days": 30,
+      "isUsed": false,
+      "createdAt": "2026-07-28T18:00:00.000Z"
+    },
+    {
+      "id": "tok_03",
+      "code": "STRM-30D-AA11-BB22",
+      "days": 30,
+      "isUsed": false,
+      "createdAt": "2026-07-28T18:00:00.000Z"
+    },
+    {
+      "id": "tok_04",
+      "code": "STRM-30D-CC33-DD44",
+      "days": 30,
+      "isUsed": false,
+      "createdAt": "2026-07-28T18:00:00.000Z"
+    }
+  ]
+}
