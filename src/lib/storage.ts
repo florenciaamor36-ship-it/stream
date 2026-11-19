@@ -29,7 +29,7 @@ export async function apiRegister(email: string, password?: string, name?: strin
   catch (error) { return { success: false, error: authError(error) }; }
 }
 export async function apiLogout(): Promise<void> { await signOut(); }
-export async function apiRedeemToken(_userId: string, _tokenCode: string) { return { success: false, error: 'El canje de tokens todavía no está habilitado: requiere un flujo de servidor seguro.' }; }
+export async function apiRedeemToken(_userId: string, _tokenCode: string): Promise<{ success: boolean; message?: string; user?: User; error?: string }> { return { success: false, error: 'El canje de tokens todavía no está habilitado: requiere un flujo de servidor seguro.' }; }
 export async function apiAcceptTerms(userId: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
     if (!firebaseIsConfigured()) throw new Error(disabled);
