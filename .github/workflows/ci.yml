@@ -1,0 +1,25 @@
+name: Branch CI
+on:
+  push:
+    branches:
+      - repair/firebase-contract-foundation-2026-11-19
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/repair/firebase-contract-foundation-2026-11-19'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build production bundles
+        run: npm run build
+      - name: Typecheck
+        run: npm run lint
+      - name: Run fail-closed regression tests
+        run: python3 tests/security-containment.test.py
