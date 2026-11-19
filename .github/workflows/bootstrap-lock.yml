@@ -1,6 +1,8 @@
 name: Bootstrap lockfile (isolated branch only)
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - repair/firebase-contract-foundation-2026-11-19
 permissions:
   contents: read
   actions: read
