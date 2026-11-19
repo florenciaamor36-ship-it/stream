@@ -11,7 +11,8 @@
     "lint": "tsc --noEmit",
     "cap:init": "cap init GestorStreaming com.streamcontrol.gestor --web-dir dist",
     "cap:add": "cap add android",
-    "cap:sync": "cap sync android"
+    "cap:sync": "cap sync android",
+    "test:contract": "tsx tests/shared-firestore-contract.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",

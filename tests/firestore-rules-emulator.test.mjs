@@ -9,7 +9,7 @@ const env = await initializeTestEnvironment({ projectId, firestore: { rules } })
 const collections = ['accounts', 'sales', 'clients'];
 const safeDoc = (uid, marker, collectionName) => {
   const common = { userId: uid, createdAt: '2026-11-19T00:00:00.000Z', notes: marker };
-  if (collectionName === 'accounts') return { ...common, platform: 'Netflix', cost: 10, totalProfiles: 1, isFullAccount: false };
+  if (collectionName === 'accounts') return { ...common, platform: 'Netflix', cost: 10, totalProfiles: 1, isFullAccount: false, purchaseDate: '2026-11-19', renewalDate: '2026-12-19', providerName: 'Synthetic Provider' };
   if (collectionName === 'sales') return { ...common, type: 'profile', accountId: 'synthetic-account', customerName: 'Synthetic Customer', customerPhone: '0000000000', salePrice: 20, costPrice: 10, profit: 10, startDate: '2026-11-19', endDate: '2026-12-19', status: 'active', paymentStatus: 'paid', paymentMethod: 'cash' };
   return { ...common, name: 'Synthetic Customer', phone: '0000000000' };
 };

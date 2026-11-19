@@ -23,6 +23,8 @@ jobs:
         run: npm run lint
       - name: Run Firebase containment and contract checks
         run: python3 tests/security-containment.test.py
+      - name: Test shared account/sale mapping round trips
+        run: npm run test:contract
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

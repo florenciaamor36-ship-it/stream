@@ -1,3 +1,4 @@
+import { accountFromShared, accountToShared, saleFromShared, saleToShared } from './sharedFirestoreContract';
 /* Firebase browser adapter; inert unless explicitly enabled with the verified public web-app config. */
 export type Session = { uid: string; email: string; displayName: string };
 type FirebaseModules = { app: any; auth: any; firestore: any };
@@ -50,7 +51,12 @@ export async function listOwned<T>(collection: SharedCollection): Promise<T[]> {
   const m = await modules(); const uid = ownerUid(m);
   const path = m.firestore.collection(m.firestore.getFirestore(m.app), 'users', uid, collectionNames[collection]);
   const result = await m.firestore.getDocs(path);
-  return result.docs.map((snapshot: any) => ({ ...snapshot.data(), id: snapshot.id, userId: uid }));
+  return result.docs.map((snapshot: any) => {
+    const data = snapshot.data();
+    if (collection === 'accounts') return accountFromShared(snapshot.id, { ...data, userId: uid }) as T;
+    if (collection === 'sales') return saleFromShared(snapshot.id, { ...data, userId: uid }) as T;
+    return { ...data, id: snapshot.id, userId: uid } as T;
+  });
 }
 const protectedFields = new Set(['accountpassword', 'password', 'masterpin', 'pin', 'credential', 'credentials', 'secret', 'token']);
 function assertNoPlaintextCredentials(value: unknown): void {
@@ -60,12 +66,14 @@ function assertNoPlaintextCredentials(value: unknown): void {
   }
 }
 export async function saveOwned<T extends { id?: string; userId?: string }>(collection: SharedCollection, record: T): Promise<T> {
-  assertNoPlaintextCredentials(record);
   const m = await modules(); const uid = ownerUid(m);
   if (record.userId && record.userId !== uid) throw new Error('El registro no pertenece a la sesión actual.');
   const db = m.firestore.getFirestore(m.app); const col = m.firestore.collection(db, 'users', uid, collectionNames[collection]);
   const docRef = record.id ? m.firestore.doc(col, record.id) : m.firestore.doc(col);
-  const { id: _ignored, ...data } = record as any;
+  const safeRecord: any = collection === 'accounts' ? accountToShared({ ...record, userId: uid } as any)
+    : collection === 'sales' ? saleToShared({ ...record, userId: uid } as any) : record;
+  assertNoPlaintextCredentials(safeRecord);
+  const { id: _ignored, ...data } = safeRecord;
   await m.firestore.setDoc(docRef, { ...data, userId: uid, updatedAt: new Date().toISOString() }, { merge: true });
   return { ...record, id: docRef.id, userId: uid };
 }

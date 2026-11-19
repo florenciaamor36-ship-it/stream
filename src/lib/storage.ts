@@ -44,17 +44,31 @@ export async function fetchAppData(userId?: string) {
   const [accounts, sales, customers] = await Promise.all([
     listOwned<Account>('accounts'), listOwned<Sale>('sales'), listOwned<Customer>('customers'),
   ]);
-  if (userId && accounts.some((item) => item.userId !== userId)) throw new Error('La sesión cambió durante la sincronización.');
-  return { accounts, sales, customers, providers: [] as Provider[], templates: [] as MessageTemplate[], tokens: [] as SubscriptionToken[], tokenAuditLogs: [], customServices: [] as CustomService[], settings: null as UserSettings | null };
+  if (userId && [...accounts, ...sales, ...customers].some((item) => item.userId !== userId)) throw new Error('La sesión cambió durante la sincronización.');
+  const accountsWithSaleState = accounts.map((account) => {
+    const related = sales.filter((sale) => sale.accountId === account.id && sale.status !== 'cancelled');
+    if (account.isFullAccount) return { ...account, isFullAccountSold: related.length > 0 };
+    return { ...account, profiles: account.profiles.map((profile, index) => {
+      const sale = related.find((candidate) => candidate.profileId === profile.id || candidate.profileName === profile.profileName) || related[index];
+      return sale ? { ...profile, status: 'sold' as const, currentSaleId: sale.id } : profile;
+    }) };
+  });
+  return { accounts: accountsWithSaleState, sales, customers, providers: [] as Provider[], templates: [] as MessageTemplate[], tokens: [] as SubscriptionToken[], tokenAuditLogs: [], customServices: [] as CustomService[], settings: null as UserSettings | null };
 }
 export async function apiUpdateCredentials(_userId: string, _creds: { newEmail?: string; newPassword?: string; newName?: string }) { throw new Error('Actualización de credenciales no implementada.'); }
 export async function apiSaveProvider(_provider: Partial<Provider>): Promise<Provider> { throw new Error('Proveedores no forman parte del contrato compartido verificado.'); }
 export async function apiDeleteProvider(_id: string) { throw new Error('Proveedores no forman parte del contrato compartido verificado.'); }
-export async function apiSaveAccount(account: Partial<Account>): Promise<Account> { return saveOwned('accounts', account as Account); }
+export async function apiSaveAccount(account: Partial<Account>): Promise<Account> {
+  if (!account.platform || !account.renewalDate) throw new Error('Faltan campos obligatorios de la cuenta.');
+  return saveOwned('accounts', account as Account);
+}
 export async function apiDeleteAccount(id: string) { return deleteOwned('accounts', id); }
 export async function apiSaveCustomer(customer: Partial<Customer>): Promise<Customer> { return saveOwned('customers', customer as Customer); }
 export async function apiDeleteCustomer(id: string) { return deleteOwned('customers', id); }
-export async function apiSaveSale(sale: Partial<Sale>): Promise<Sale> { return saveOwned('sales', sale as Sale); }
+export async function apiSaveSale(sale: Partial<Sale>): Promise<Sale> {
+  if (!sale.accountId || !sale.customerName || !sale.startDate || !sale.endDate) throw new Error('Faltan campos obligatorios de la venta.');
+  return saveOwned('sales', sale as Sale);
+}
 export async function apiRenewSale(_saleId: string, _days = 30, _paymentMethod?: string) { throw new Error('Renovación requiere un contrato transaccional compartido y verificado.'); }
 export async function apiDeleteSale(id: string) { return deleteOwned('sales', id); }
 export async function apiSaveTemplate(_template: Partial<MessageTemplate>): Promise<MessageTemplate> { throw new Error('Plantillas no forman parte del contrato compartido verificado.'); }

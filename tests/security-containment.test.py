@@ -44,7 +44,9 @@ class FirebaseContainmentTests(unittest.TestCase):
         self.assertNotIn("tokens_usados", self.adapter)
 
     def test_plaintext_credentials_are_rejected(self):
-        self.assertIn("assertNoPlaintextCredentials(record)", self.adapter)
+        self.assertIn("assertNoPlaintextCredentials(safeRecord)", self.adapter)
+        self.assertIn("accountToShared", self.adapter)
+        self.assertIn("saleToShared", self.adapter)
         self.assertIn("accountpassword", self.adapter.lower())
         self.assertIn("masterpin", self.adapter.lower())
         self.assertIn("Firebase Auth", (ROOT / "docs/FIREBASE_DATA_CONTRACT.md").read_text())

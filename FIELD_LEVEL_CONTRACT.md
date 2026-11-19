@@ -32,7 +32,7 @@ The emulator rules independently require `request.auth.uid == uid`, require docu
 | Sale model | `type/status/paymentStatus`, ISO dates, customer relation fields | `saleType/renewalStatus/paymentStatus`, epoch millis | mismatch; no Android sale mapper yet |
 | Supplier/provider | web supplier ID and names | Android supplier name/phone | mismatch; no provider mapping in V1 |
 
-The emulator test fixtures only assert CRUD on the allowlisted canonical shapes. They prove the owner rules, not that all production app models can currently be synchronized. The Android app's normal account/sale Room records intentionally do **not** match the canonical shape, and Firebase sync stays disabled (`FIRESTORE_SYNC_ENABLED=false`). Only client/customer DTO projection has a focused Android unit test; it has not been activated against live Firestore.
+The emulator test fixtures assert CRUD on allowlisted canonical shapes; account/sale adapter round-trip tests separately exercise synthetic mapping. They prove the owner rules, not that all production app models can currently be synchronized. Web and Android now have explicit allowlisted account/sale projections to this candidate shape, with synthetic mapper round-trip tests. Credentials and PINs remain local-only, and their blank shared-view fields are not recovered. Android Firestore sync is still hard-disabled (`FIRESTORE_SYNC_ENABLED=false`) and live reads/writes are not activated or verified.
 
 ## Security/data minimization boundary
 
@@ -55,7 +55,7 @@ The suite seeds only fake sentinel documents in the emulator. It checks read/cre
 
 1. Have a project owner verify Firebase Auth providers, actual deployed rules and expected users/data paths; do not overwrite current rules, which include `/usuarios` and token flows.
 2. Design and review an interoperable credential encryption/key-management contract or explicitly choose an app workflow that does not sync those fields; no plaintext account/sale sync.
-3. Implement and test Android account/sale adapters for web field names, stable IDs and ISO dates, and resolve profile/provider/customer relationships, sync retries/conflicts/deletion semantics.
+3. Resolve profile/provider/customer relationship semantics, test sync retries/conflicts/deletion and reconcile local-only credential UX. The current adapter retains essential safe finance/customer/date fields but does not synchronize profile PINs, supplier phones, payment method, or credentials.
 4. Run this emulator suite and Android JVM/CI. Any production rules/config rollout needs a separate explicit approval and owner-controlled, reviewed deployment. No production deployment or migration is part of this work.
 
 ## Emulator test coverage boundaries
