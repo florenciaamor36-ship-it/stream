@@ -6,13 +6,14 @@ import { createServer as createViteServer } from 'vite';
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '10mb' }));
-
-// Fail closed: the existing API has no verified server-side session/ownership boundary.
-// Reject every API request before route handlers can read or mutate the existing database.
+// Fail closed before body parsing or any route handler. The existing API has no
+// verified server-side session/ownership boundary, so no /api request may reach
+// code that could read or mutate the existing database.
 app.use('/api', (_req, res) => {
   res.status(503).json({ error: 'API temporalmente deshabilitada: falta autenticación y autorización seguras.' });
 });
+
+app.use(express.json({ limit: '10mb' }));
 
 const DB_PATH = path.join(process.cwd(), 'data', 'db.json');
 

@@ -17,13 +17,19 @@ class FailClosedContainmentTests(unittest.TestCase):
         cls.deploy = (ROOT / ".github/workflows/deploy.yml").read_text()
         cls.apk = (ROOT / ".github/workflows/build-apk.yml").read_text()
 
-    def test_api_gate_precedes_every_api_route(self):
+    def test_api_gate_precedes_body_parser_and_every_api_route(self):
         gate = self.server.index("app.use('/api'")
-        first_route = min(self.server.index(f"app.{verb}('") for verb in ("get", "post", "put", "delete"))
-        self.assertLess(gate, first_route)
-        self.assertIn("res.status(503)", self.server[gate:first_route])
-        paths = re.findall(r"app\.(?:get|post|put|delete)\(['\"]([^'\"]+)", self.server)
-        self.assertTrue(paths)
+        body_parser = self.server.index("app.use(express.json")
+        self.assertLess(gate, body_parser)
+        gate_block = self.server[gate:body_parser]
+        self.assertIn("res.status(503)", gate_block)
+        self.assertIn("res.status(503).json(", gate_block)
+        self.assertNotIn("next(", gate_block)
+
+        routes = list(re.finditer(r"app\.(?:get|post|put|delete)\(['\"]([^'\"]+)", self.server))
+        self.assertTrue(routes)
+        self.assertLess(gate, routes[0].start())
+        paths = [route.group(1) for route in routes]
         self.assertTrue(all(path.startswith('/api/') or path == '*' for path in paths))
 
     def test_demo_admin_seed_and_automatic_db_initialization_removed(self):

@@ -4,7 +4,7 @@ This branch is a code-only containment change. It does not implement or claim to
 
 ## Changes
 
-- Every `/api/*` request receives HTTP 503 before any existing handler can read or mutate the database. This disables login, registration, data access, CRUD, settings, backups/restores, tokens, and all other API features.
+- Every `/api/*` request is rejected with HTTP 503 before request-body parsing or any existing route handler can read or mutate the database. This disables login, registration, data access, CRUD, settings, backups/restores, tokens, and all other API features. The order is covered by a static regression test; it is not represented as an end-to-end runtime test.
 - Removed the code that seeded/promoted a built-in administrator and removed local/demo authentication and `localStorage` database fallback implementations. The browser no longer hydrates or persists a client-side user identity.
 - The UI no longer collects an email or password and warns that real credentials must not be entered while server authentication is unavailable.
 - Server-side automatic database initialization/fallback was removed. A missing or unreadable database now fails closed rather than creating/replacing data.
