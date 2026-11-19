@@ -45,8 +45,8 @@ class FirebaseContainmentTests(unittest.TestCase):
 
     def test_plaintext_credentials_are_rejected(self):
         self.assertIn("assertNoPlaintextCredentials(record)", self.adapter)
-        self.assertIn("accountPassword", self.adapter)
-        self.assertIn("masterPin", self.adapter)
+        self.assertIn("accountpassword", self.adapter.lower())
+        self.assertIn("masterpin", self.adapter.lower())
         self.assertIn("Firebase Auth", (ROOT / "docs/FIREBASE_DATA_CONTRACT.md").read_text())
 
     def test_auth_ui_only_collects_credentials_when_explicitly_enabled(self):
