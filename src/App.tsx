@@ -87,7 +87,7 @@ export default function App() {
   useEffect(() => subscribeToAuth(setUser), []);
 
   // Initial Data Load
-  const reloadData = async () => {
+  const reloadData = async (localOnly?: { accounts?: Account[]; sales?: Sale[] }) => {
     if (!user) {
       setProviders([]); setAccounts([]); setCustomers([]); setSales([]); setTemplates([]);
       setTokens([]); setTokenAuditLogs([]); setCustomServices([]); setLastCloudSync(null);
@@ -95,7 +95,7 @@ export default function App() {
       return;
     }
     setIsCloudSyncing(true);
-    const data = await fetchAppData(user?.id);
+    const data = await fetchAppData(user?.id, localOnly ?? { accounts, sales });
     if (data) {
       if (data.providers) setProviders(data.providers);
       if (data.accounts) setAccounts(data.accounts);
@@ -193,8 +193,8 @@ export default function App() {
 
   const handleSaveAccount = async (account: Partial<Account>) => {
     if (!user) return;
-    await apiSaveAccount({ ...account, userId: user.id });
-    reloadData();
+    const saved = await apiSaveAccount({ ...account, userId: user.id });
+    await reloadData({ accounts: [...accounts.filter((item) => item.id !== saved.id), saved], sales });
   };
 
   const handleDeleteAccount = async (id: string) => {
@@ -215,8 +215,8 @@ export default function App() {
 
   const handleSaveSale = async (sale: Partial<Sale>) => {
     if (!user) return;
-    await apiSaveSale({ ...sale, userId: user.id });
-    reloadData();
+    const saved = await apiSaveSale({ ...sale, userId: user.id });
+    await reloadData({ accounts, sales: [...sales.filter((item) => item.id !== saved.id), saved] });
   };
 
   const handleRenewSale = async (saleId: string) => {

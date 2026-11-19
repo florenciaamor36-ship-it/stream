@@ -39,7 +39,7 @@ export async function apiAcceptTerms(userId: string): Promise<{ success: boolean
     return { success: true, user: toUser(session) };
   } catch (error) { return { success: false, error: authError(error) }; }
 }
-export async function fetchAppData(userId?: string) {
+export async function fetchAppData(userId?: string, localOnly?: { accounts?: Account[]; sales?: Sale[] }) {
   if (!firebaseIsConfigured()) return null;
   const [accounts, sales, customers] = await Promise.all([
     listOwned<Account>('accounts'), listOwned<Sale>('sales'), listOwned<Customer>('customers'),
@@ -47,13 +47,20 @@ export async function fetchAppData(userId?: string) {
   if (userId && [...accounts, ...sales, ...customers].some((item) => item.userId !== userId)) throw new Error('La sesión cambió durante la sincronización.');
   const accountsWithSaleState = accounts.map((account) => {
     const related = sales.filter((sale) => sale.accountId === account.id && sale.status !== 'cancelled');
-    if (account.isFullAccount) return { ...account, isFullAccountSold: related.length > 0 };
-    return { ...account, profiles: account.profiles.map((profile, index) => {
+    const local = localOnly?.accounts?.find((candidate) => candidate.id === account.id);
+    if (account.isFullAccount) return { ...account, accountEmail: local?.accountEmail ?? '', accountPassword: local?.accountPassword ?? '', masterPin: local?.masterPin ?? '', providerId: local?.providerId ?? account.providerId, isFullAccountSold: related.length > 0 };
+    const localProfiles = local?.profiles ?? [];
+    return { ...account, accountEmail: local?.accountEmail ?? '', accountPassword: local?.accountPassword ?? '', masterPin: local?.masterPin ?? '', providerId: local?.providerId ?? account.providerId, profiles: account.profiles.map((profile, index) => {
       const sale = related.find((candidate) => candidate.profileId === profile.id || candidate.profileName === profile.profileName) || related[index];
-      return sale ? { ...profile, status: 'sold' as const, currentSaleId: sale.id } : profile;
+      const localProfile = localProfiles[index];
+      return { ...profile, ...(localProfile ?? {}), status: sale ? 'sold' as const : (localProfile?.status ?? profile.status), currentSaleId: sale?.id ?? localProfile?.currentSaleId };
     }) };
   });
-  return { accounts: accountsWithSaleState, sales, customers, providers: [] as Provider[], templates: [] as MessageTemplate[], tokens: [] as SubscriptionToken[], tokenAuditLogs: [], customServices: [] as CustomService[], settings: null as UserSettings | null };
+  const salesWithLocalCredentials = sales.map((sale) => {
+    const local = localOnly?.sales?.find((candidate) => candidate.id === sale.id);
+    return local ? { ...sale, accountEmail: local.accountEmail, accountPassword: local.accountPassword, pin: local.pin, customerId: sale.customerId || local.customerId } : sale;
+  });
+  return { accounts: accountsWithSaleState, sales: salesWithLocalCredentials, customers, providers: [] as Provider[], templates: [] as MessageTemplate[], tokens: [] as SubscriptionToken[], tokenAuditLogs: [], customServices: [] as CustomService[], settings: null as UserSettings | null };
 }
 export async function apiUpdateCredentials(_userId: string, _creds: { newEmail?: string; newPassword?: string; newName?: string }) { throw new Error('Actualización de credenciales no implementada.'); }
 export async function apiSaveProvider(_provider: Partial<Provider>): Promise<Provider> { throw new Error('Proveedores no forman parte del contrato compartido verificado.'); }
