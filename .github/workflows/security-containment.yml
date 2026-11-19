@@ -1,0 +1,19 @@
+name: Security containment regression
+
+on:
+  push:
+    branches:
+      - "audit/fail-closed-auth-remediation-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  containment-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Run fail-closed static regression tests
+        run: python3 tests/security-containment.test.py
