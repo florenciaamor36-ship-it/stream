@@ -53,14 +53,8 @@ import { SubscriptionLockModal } from './components/SubscriptionLockModal';
 import { getDaysRemaining } from './lib/utils';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('stream_control_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  // No client-side identity is trusted; secure server authentication is not implemented.
+  const [user, setUser] = useState<User | null>(null);
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
 
@@ -139,7 +133,6 @@ export default function App() {
     const res = await apiLogin(email, password);
     if (res.success && res.user) {
       setUser(res.user);
-      localStorage.setItem('stream_control_user', JSON.stringify(res.user));
     }
     return res;
   };
@@ -148,7 +141,6 @@ export default function App() {
     const res = await apiRegister(email, password, name);
     if (res.success && res.user) {
       setUser(res.user);
-      localStorage.setItem('stream_control_user', JSON.stringify(res.user));
     }
     return res;
   };
@@ -158,13 +150,11 @@ export default function App() {
     const res = await apiAcceptTerms(user.id);
     if (res.success && res.user) {
       setUser(res.user);
-      localStorage.setItem('stream_control_user', JSON.stringify(res.user));
     }
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('stream_control_user');
   };
 
   const handleRedeemToken = async (code: string) => {
@@ -172,7 +162,6 @@ export default function App() {
     const res = await apiRedeemToken(user.id, code);
     if (res.success && res.user) {
       setUser(res.user);
-      localStorage.setItem('stream_control_user', JSON.stringify(res.user));
       reloadData();
     }
     return res;

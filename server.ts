@@ -8,6 +8,12 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
+// Fail closed: the existing API has no verified server-side session/ownership boundary.
+// Reject every API request before route handlers can read or mutate the existing database.
+app.use('/api', (_req, res) => {
+  res.status(503).json({ error: 'API temporalmente deshabilitada: falta autenticación y autorización seguras.' });
+});
+
 const DB_PATH = path.join(process.cwd(), 'data', 'db.json');
 
 // Ensure data directory exists
@@ -15,169 +21,16 @@ if (!fs.existsSync(path.dirname(DB_PATH))) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 }
 
-// Initial Seed Data Generator
-function getInitialDbData() {
-  const now = new Date();
-  
-  // Grace period 3 days
-  const graceDate = new Date();
-  graceDate.setDate(now.getDate() + 3);
-
-  // Sub date +30 days
-  const subDate = new Date();
-  subDate.setDate(now.getDate() + 30);
-
-  const demoUser = {
-    id: 'user_admin_01',
-    email: 'florenciaamor36@gmail.com',
-    password: 'Selexionar1',
-    name: 'Florencia Amor (Admin)',
-    createdAt: now.toISOString(),
-    gracePeriodUntil: graceDate.toISOString(),
-    subscriptionUntil: subDate.toISOString(),
-    tokensRedeemed: 1,
-    isAdmin: true,
-    hasAcceptedTerms: true,
-  };
-
-  // Customizable Message Templates
-  const templates = [
-    {
-      id: 'tmpl_welcome',
-      userId: demoUser.id,
-      name: 'Entrega de Credenciales (Bienvenida)',
-      type: 'welcome_credentials',
-      isDefault: true,
-      body: `🍿 *¡Hola {cliente}! Aquí están los accesos a tu pantalla de {servicio}* 🍿
-
-📧 *Correo:* {email_cuenta}
-🔑 *Clave:* {password}
-👤 *Perfil:* {perfil}
-📌 *PIN:* {pin}
-📅 *Fecha de Vencimiento:* {fecha_vencimiento}
-
-⚠️ *Reglas importantes:*
-1. No modifiques la contraseña ni el correo de la cuenta.
-2. Ingresa únicamente al perfil asignado ({perfil}) con tu PIN ({pin}).
-3. Disfruta tu contenido sin límites. ¡Gracias por tu compra!`,
-    },
-    {
-      id: 'tmpl_reminder_soon',
-      userId: demoUser.id,
-      name: 'Recordatorio de Vencimiento Próximo (3 días)',
-      type: 'reminder_soon',
-      isDefault: true,
-      body: `👋 *Hola {cliente}, recordatorio de tu suscripción de {servicio}*
-
-Te informamos que tu perfil *{perfil}* vencerá el *{fecha_vencimiento}* (te quedan *{dias_restantes} días* de servicio).
-
-💰 *Monto de renovación:* {precio}
-💳 *Medio de pago:* {metodo_pago}
-
-¿Deseas renovar para mantener tu perfil y PIN activo sin interrupciones? Responde a este mensaje para coordinar la renovación. ¡Saludos!`,
-    },
-    {
-      id: 'tmpl_expiration_today',
-      userId: demoUser.id,
-      name: 'Aviso de Vencimiento HOY',
-      type: 'expiration_today',
-      isDefault: true,
-      body: `🚨 *¡Hola {cliente}! Tu cuenta de {servicio} vence HOY* 🚨
-
-Tu perfil *{perfil}* vence el día de hoy (*{fecha_vencimiento}*).
-
-Para evitar que el perfil o PIN sea reasignado, por favor confirma tu renovación enviando el comprobante de *{precio}*.
-
-Si ya realizaste el pago, por favor envía tu captura de pantalla por este medio. ¡Muchas gracias!`,
-    },
-    {
-      id: 'tmpl_expired_notice',
-      userId: demoUser.id,
-      name: 'Aviso de Servicio Vencido / Suspendido',
-      type: 'expired_notice',
-      isDefault: true,
-      body: `⛔ *Servicio Suspendido - {servicio}*
-
-Hola {cliente}, tu perfil *{perfil}* ha vencido. Las credenciales o el PIN han sido deshabilitados.
-
-Si deseas reactivar tu pantalla hoy mismo, escríbenos para brindarte los datos de pago ({precio}). ¡Estamos atentos!`,
-    },
-    {
-      id: 'tmpl_password_change',
-      userId: demoUser.id,
-      name: 'Notificación de Cambio de Contraseña',
-      type: 'password_change',
-      isDefault: false,
-      body: `🔐 *Actualización de Claves de {servicio}*
-
-Hola {cliente}, hemos actualizado la clave de seguridad de tu cuenta de {servicio}.
-
-📧 *Correo:* {email_cuenta}
-🔑 *Nueva Clave:* {password}
-👤 *Tu Perfil:* {perfil} (PIN: {pin})
-
-Tu fecha de vencimiento se mantiene igual: *{fecha_vencimiento}*.`,
-    },
-  ];
-
-  // Pre-generated Subscription Tokens
-  const tokens = [
-    {
-      id: 'tok_01',
-      code: 'STRM-30D-DEMO-VIP1',
-      days: 30,
-      isUsed: true,
-      usedByEmail: demoUser.email,
-      usedAt: now.toISOString(),
-      createdAt: now.toISOString(),
-    },
-    {
-      id: 'tok_02',
-      code: 'STRM-30D-7788-9900',
-      days: 30,
-      isUsed: false,
-      createdAt: now.toISOString(),
-    },
-    {
-      id: 'tok_03',
-      code: 'STRM-30D-AA11-BB22',
-      days: 30,
-      isUsed: false,
-      createdAt: now.toISOString(),
-    },
-    {
-      id: 'tok_04',
-      code: 'STRM-30D-CC33-DD44',
-      days: 30,
-      isUsed: false,
-      createdAt: now.toISOString(),
-    },
-  ];
-
-  return {
-    users: [demoUser],
-    providers: [],
-    accounts: [],
-    customers: [],
-    sales: [],
-    templates,
-    tokens,
-  };
-}
-
 // Database helper functions
 function readDb() {
   try {
     if (!fs.existsSync(DB_PATH)) {
-      const initial = getInitialDbData();
-      fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2), 'utf-8');
-      return initial;
+      throw new Error('Existing database not found; automatic initialization is disabled.');
     }
     const raw = fs.readFileSync(DB_PATH, 'utf-8');
     return JSON.parse(raw);
-  } catch (err) {
-    console.error('Error reading db.json:', err);
-    return getInitialDbData();
+  } catch {
+    throw new Error('Database unavailable; no fallback or automatic initialization is allowed.');
   }
 }
 
@@ -192,63 +45,8 @@ function writeDb(data: any) {
 // REST API ENDPOINTS
 
 // 1. Auth endpoints
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Por favor ingresa un correo electrónico y contraseña válidos.' });
-  }
-
-  const db = readDb();
-  const cleanEmail = (email || '').toLowerCase().trim();
-  let user = db.users.find((u: any) => u.email.toLowerCase() === cleanEmail);
-
-  // Auto-promote or auto-create florenciaamor36@gmail.com if needed
-  if (cleanEmail === 'florenciaamor36@gmail.com') {
-    if (!user) {
-      const now = new Date();
-      const subDate = new Date();
-      subDate.setDate(now.getDate() + 365);
-      user = {
-        id: 'user_admin_01',
-        email: 'florenciaamor36@gmail.com',
-        password: password || 'Selexionar1',
-        name: 'Florencia Amor (Admin)',
-        createdAt: now.toISOString(),
-        gracePeriodUntil: subDate.toISOString(),
-        subscriptionUntil: subDate.toISOString(),
-        tokensRedeemed: 99,
-        isAdmin: true,
-        hasAcceptedTerms: true,
-      };
-      db.users.push(user);
-      writeDb(db);
-    } else {
-      user.isAdmin = true;
-      if (password === 'Selexionar1') {
-        user.password = 'Selexionar1';
-      }
-      writeDb(db);
-    }
-  }
-
-  if (!user) {
-    return res.status(400).json({ error: 'El correo electrónico ingresado no se encuentra registrado.' });
-  }
-
-  if (user.password && user.password !== password) {
-    return res.status(400).json({ error: 'La contraseña ingresada es incorrecta.' });
-  }
-
-  const now = new Date();
-  const subExpired = user.subscriptionUntil ? new Date(user.subscriptionUntil) < now : true;
-  const graceExpired = user.gracePeriodUntil ? new Date(user.gracePeriodUntil) < now : true;
-  const enrichedUser = {
-    ...user,
-    serverTime: now.toISOString(),
-    isLocked: !user.isAdmin && subExpired && graceExpired,
-  };
-
-  res.json({ success: true, user: enrichedUser });
+app.post('/api/auth/login', (_req, res) => {
+  res.status(503).json({ error: 'Inicio de sesión deshabilitado hasta implementar autenticación segura.' });
 });
 
 app.post('/api/auth/accept-terms', (req, res) => {

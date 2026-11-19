@@ -29,3 +29,7 @@ The branch adds a job-level ref guard to both workflows: Pages deploy only runs 
 ## Validation status
 
 Repository inspection used GitHub REST API; no local Node/npm/git toolchain was available in the parent environment, so build/tests could not be run here. The existing run `30467612359`, job `90629358392`, shows failure at **Set up Node.js**; the detailed log endpoint returned HTTP 410, so the specific cause is unknown and is not inferred. The repository currently lists zero Actions artifacts.
+
+## Follow-up: fail-closed containment branch
+
+A separate isolated branch `audit/fail-closed-auth-containment` was created from audit branch commit `3cfe08cc656e03b26044203cec4f625fd673d977`. It adds an early HTTP 503 gate for all `/api/*` routes, removes built-in admin demo login/automatic database initialization and browser local/demo authentication fallbacks, stops trusting/persisting browser identity, and replaces the credential form with an explicit unavailable warning. The original database file was not changed, read, migrated, replaced, or otherwise operated on. This is containment only, not an authenticated repair: all API capabilities are intentionally disabled, and existing handler implementations remain unsafe behind the gate. See `SECURITY_CONTAINMENT.md` for unresolved prerequisites and validation limits. No merge, deployment, production action, or database operation was performed.
