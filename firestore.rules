@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // V1 is deliberately a data-minimized subset. It excludes account logins,
+    // passwords, PINs, nested profile objects, and Android-only fields.
+    function ownsSafeAccount(uid) {
+      return request.resource.data.keys().hasAll(['userId'])
+        && request.resource.data.keys().hasOnly([
+          'userId', 'platform', 'customPlatformName', 'providerId', 'providerName',
+          'cost', 'totalProfiles', 'isFullAccount', 'isFullAccountSold',
+          'purchaseDate', 'renewalDate', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.userId == uid;
+    }
+    function ownsSafeSale(uid) {
+      return request.resource.data.keys().hasAll(['userId'])
+        && request.resource.data.keys().hasOnly([
+          'userId', 'type', 'accountId', 'profileId', 'profileName', 'customerId',
+          'customerName', 'customerPhone', 'platform', 'salePrice', 'costPrice',
+          'profit', 'startDate', 'endDate', 'status', 'paymentStatus',
+          'paymentMethod', 'notes', 'lastRenewalDate', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.userId == uid;
+    }
+    function ownsSafeClient(uid) {
+      return request.resource.data.keys().hasAll(['userId', 'name', 'phone'])
+        && request.resource.data.keys().hasOnly([
+          'userId', 'name', 'phone', 'email', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.userId == uid;
+    }
+
+    match /users/{uid}/accounts/{documentId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && ownsSafeAccount(uid);
+    }
+    match /users/{uid}/sales/{documentId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && ownsSafeSale(uid);
+    }
+    match /users/{uid}/clients/{documentId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && ownsSafeClient(uid);
+    }
+
+    // Emulator fixture only. No legacy /usuarios, /tokens_usados or other path
+    // receives access from this test ruleset. Production rules are untouched.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

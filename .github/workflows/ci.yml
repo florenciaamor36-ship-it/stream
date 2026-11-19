@@ -23,3 +23,11 @@ jobs:
         run: npm run lint
       - name: Run Firebase containment and contract checks
         run: python3 tests/security-containment.test.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install isolated Firestore emulator test tools
+        run: npm install --no-save --package-lock=false firebase@11.10.0 @firebase/rules-unit-testing@4.0.1 firebase-tools@14.12.1
+      - name: Test owner rules against Firestore emulator (synthetic data only)
+        run: npx firebase emulators:exec --only firestore --project demo-stream-flow-contract 'node tests/firestore-rules-emulator.test.mjs'

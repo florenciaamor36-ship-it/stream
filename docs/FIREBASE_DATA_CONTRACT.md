@@ -32,6 +32,13 @@ The adapter rejects a record whose supplied `userId` disagrees with the authenti
 4. Resolve the credential encryption blocker before using real account records. Do not test against or migrate production documents.
 5. Run production build/typecheck, emulator rules tests, and synthetic cross-app tests. Only after a separate explicit authorization should production rules/config be changed or the app enabled/deployed.
 
+## Emulator-tested candidate schema (2026-11-19)
+
+See `FIELD_LEVEL_CONTRACT.md` for the field-by-field web/Android comparison, canonical V1 allowlists, test coverage and exact remaining mismatches. The branch now carries strict owner-scoped **emulator-only** rules and synthetic cross-user CRUD tests for `/users/{uid}/{accounts|sales|clients}`. That fixture is deny-by-default outside these paths and intentionally does not preserve grants to legacy `/usuarios` or `/tokens_usados`; it is not a production replacement ruleset. No deployed rules/documents were read or changed. Android sync remains hard-coded off. Only the Android client/customer field projection is mapped and unit tested; account/sale parity and plaintext password/PIN handling block full synchronization.
+
 ## Current honest capability
 
 With a verified config and rules, the adapter provides email/password Firebase Auth and owner-scoped CRUD paths for the three proposed collections, subject to the schema and plaintext-credential blockers above. In this repository the feature is deliberately disabled by default, no real cross-app data test has been run, and the branch is not a live production integration.
+## Emulator-tested candidate schema (2026-11-19)
+
+See `FIELD_LEVEL_CONTRACT.md` for the field-by-field web/Android comparison, canonical V1 allowlists, test coverage and exact remaining mismatches. The branch now carries strict owner-scoped **emulator-only** rules and synthetic cross-user CRUD tests for `/users/{uid}/{accounts|sales|clients}`. That fixture is deny-by-default outside these paths and intentionally does not preserve grants to legacy `/usuarios` or `/tokens_usados`; it is not a production replacement ruleset. No deployed rules/documents were read or changed. Android sync remains hard-coded off. Only the Android client/customer field projection is mapped and unit tested; account/sale parity and plaintext password/PIN handling block full synchronization.
