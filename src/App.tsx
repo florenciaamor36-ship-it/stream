@@ -33,7 +33,10 @@ import {
   apiSaveCustomService,
   apiDeleteCustomService,
   apiAcceptTerms,
+  apiLogout,
+  subscribeToAuth,
 } from './lib/storage';
+import { firebaseIsConfigured } from './lib/firebaseAdapter';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { GracePeriodBanner } from './components/GracePeriodBanner';
@@ -53,7 +56,7 @@ import { SubscriptionLockModal } from './components/SubscriptionLockModal';
 import { getDaysRemaining } from './lib/utils';
 
 export default function App() {
-  // No client-side identity is trusted; secure server authentication is not implemented.
+  // Auth identity comes only from Firebase Auth; never from a client-supplied owner ID.
   const [user, setUser] = useState<User | null>(null);
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
@@ -80,8 +83,17 @@ export default function App() {
   // Modals
   const [newSaleModalOpen, setNewSaleModalOpen] = useState(false);
 
+  // Observe Firebase Auth's persisted browser session when integration is opted in.
+  useEffect(() => subscribeToAuth(setUser), []);
+
   // Initial Data Load
   const reloadData = async () => {
+    if (!user) {
+      setProviders([]); setAccounts([]); setCustomers([]); setSales([]); setTemplates([]);
+      setTokens([]); setTokenAuditLogs([]); setCustomServices([]); setLastCloudSync(null);
+      setIsCloudSyncing(false);
+      return;
+    }
     setIsCloudSyncing(true);
     const data = await fetchAppData(user?.id);
     if (data) {
@@ -153,8 +165,8 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    setUser(null);
+  const handleLogout = async () => {
+    try { await apiLogout(); } catch { setUser(null); }
   };
 
   const handleRedeemToken = async (code: string) => {
@@ -322,7 +334,7 @@ export default function App() {
   const isAppLocked = user ? ((user as any).isLocked || (!user.isAdmin && subDays <= 0 && graceDays <= 0)) : false;
 
   if (!user) {
-    return <AuthModal onLogin={handleLogin} onRegister={handleRegister} />;
+    return <AuthModal onLogin={handleLogin} onRegister={handleRegister} enabled={firebaseIsConfigured()} />;
   }
 
   if (user && !user.hasAcceptedTerms) {

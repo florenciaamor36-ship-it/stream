@@ -2,13 +2,13 @@ name: Branch CI
 on:
   push:
     branches:
-      - repair/firebase-contract-foundation-2026-11-19
+      - feature/firebase-web-auth-adapter-2026-11-19
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   validate:
-    if: github.ref == 'refs/heads/repair/firebase-contract-foundation-2026-11-19'
+    if: github.ref == 'refs/heads/feature/firebase-web-auth-adapter-2026-11-19'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,5 +21,5 @@ jobs:
         run: npm run build
       - name: Typecheck
         run: npm run lint
-      - name: Run fail-closed regression tests
+      - name: Run Firebase containment and contract checks
         run: python3 tests/security-containment.test.py
