@@ -29,7 +29,9 @@ class FailClosedContainmentTests(unittest.TestCase):
     def test_demo_admin_seed_and_automatic_db_initialization_removed(self):
         self.assertNotIn("getInitialDbData", self.server)
         self.assertNotIn("Florencia Amor (Admin)", self.server)
+        self.assertNotIn("Florencia Amor (Admin)", self.storage)
         self.assertNotRegex(self.server, r"(?i)password\s*:\s*['\"`]")
+        self.assertNotRegex(self.storage, r"(?i)password\s*[:=]\s*['\"`]")
         read_region = self.server[self.server.index("function readDb()"):self.server.index("function writeDb(data: any)")]
         self.assertNotIn("writeFileSync", read_region)
         self.assertIn("automatic initialization is disabled", self.server)
