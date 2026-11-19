@@ -1,0 +1,32 @@
+name: Bootstrap lockfile (isolated branch only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  lock-and-validate:
+    if: github.ref == 'refs/heads/repair/firebase-contract-foundation-2026-11-19'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Generate lockfile from package metadata
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install exactly from generated lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Build, typecheck, and run safe regression tests
+        run: |
+          npm run build
+          npm run lint
+          python3 tests/security-containment.test.py
+      - name: Export lockfile for isolated commit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
