@@ -7,7 +7,7 @@ export type AppDataEnvelope = { schemaVersion: 1; app: 'stream-flow-pro'; update
 export class DriveConflictError extends Error { constructor() { super('Google Drive copy changed on another device. Reload or export before replacing it.'); this.name = 'DriveConflictError'; } }
 export class DriveStorage {
   private file: DriveFile | null = null;
-  constructor(private token: () => string | null, private request: DriveFetch = fetch, private writerId = crypto.randomUUID()) {}
+  constructor(private token: () => string | null, private request: DriveFetch = fetch, private writerId: string = crypto.randomUUID()) {}
   private async call(url: string, init: RequestInit = {}) {
     const token = this.token();
     if (!token) throw new Error('Google Drive is disconnected. Reconnect to sync; local data remains available.');
