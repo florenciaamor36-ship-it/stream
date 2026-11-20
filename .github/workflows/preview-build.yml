@@ -15,8 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
+      - name: Build Worker bundle without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
       - name: Build static app with isolated API origin
         run: npm run build
         env:
