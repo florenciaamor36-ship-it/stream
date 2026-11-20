@@ -13,7 +13,7 @@ type User = {
 type Row = { user_id: string; kind: string; id: string; body: string };
 
 const SESSION_DAYS = 30;
-const PBKDF2_ITERATIONS = 310_000;
+const PBKDF2_ITERATIONS = 100_000;
 const ALLOWED_KINDS = new Set(['providers', 'accounts', 'customers', 'sales', 'templates', 'customServices', 'settings']);
 const ERROR = {
   unauthorized: 'Sesión inválida o vencida. Iniciá sesión nuevamente.',
@@ -75,7 +75,7 @@ export default {
     if (request.method === 'OPTIONS') return json({}, 204, origin);
     const url = new URL(request.url);
     if (url.pathname === '/health') return json({ ok: true, backend: 'stream-flow-api-preview' }, 200, origin);
-    const id = env.STORE.idFromName('stream-flow-global');
+    const id = env.STORE.idFromName('stream-flow-preview-smoke-2');
     const stub = env.STORE.get(id);
     // Durable Object fetch has no RPC-style second argument; pass trusted metadata only on the internal request.
     const forwarded = new Request(request);
