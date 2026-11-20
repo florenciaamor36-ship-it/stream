@@ -132,8 +132,13 @@ assert(state.settings.userId === loggedIn.user.id && state.settings.currency ===
 assert(!state.providers.some((x) => x.id.startsWith('prov_') && x.userId !== loggedIn.user.id), 'tenant data leaked');
 
 // Backup is authenticated, user-scoped, and contains no token codes.
+await call('/api/providers', { method:'POST', token:loggedIn.token, body:{name:'Synthetic Backup Marker'}, expect:201 });
 let backup = (await call('/api/backup/export', { token: loggedIn.token })).data;
 assert(Array.isArray(backup.providers) && !('tokens' in backup), 'backup contract invalid or token codes leaked');
+await call('/api/backup/restore', { method:'POST', token:loggedIn.token, body:{backup:{...backup,accounts:'malformed'}}, expect:400 });
+let afterRejectedRestore = (await call('/api/data',{token:loggedIn.token})).data;
+assert(afterRejectedRestore.providers.some((x)=>x.name==='Synthetic Backup Marker'), 'rejected restore changed existing user data');
+assert(afterRejectedRestore.settings.currency==='ARS', 'rejected restore changed existing settings');
 await call('/api/backup/restore', { method: 'POST', token: loggedIn.token, body: { backup } });
 
 // Subscription tokens are one-time and entitlement state is server supplied.
@@ -147,3 +152,4 @@ assert(Array.isArray(logs) && logs.some((x) => x.status === 'SUCCESS'), 'token a
 await call('/api/auth/logout', { method: 'POST', token: loggedIn.token });
 await call('/api/data', { token: loggedIn.token, expect: 401 });
 console.log('Stream Flow synthetic Worker smoke passed: auth, token, owner isolation, transactional sales, backup, CORS, logout and persistence.');
+

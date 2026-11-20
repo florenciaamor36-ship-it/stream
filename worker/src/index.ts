@@ -395,12 +395,33 @@ export class StreamFlowStore {
   }
   private async restoreData(request: Request,user: User,origin: string) {
     const b=await this.body(request), data=b.backup||b;
+    if(!data || typeof data!=='object' || Array.isArray(data)) return json({error:'El formato del respaldo no es válido.'},400,origin);
     const kinds=['providers','accounts','customers','sales','templates','customServices'];
-    for(const kind of kinds) if(Array.isArray(data[kind])) {
-      this.sql.exec('DELETE FROM items WHERE user_id=? AND kind=?',user.id,kind);
-      for(const item of data[kind].slice(0,5000)) { const fixed={...item,userId:user.id,id:String(item.id||`${kind}_${crypto.randomUUID()}`)}; this.sql.exec('INSERT OR REPLACE INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,kind,fixed.id,JSON.stringify(fixed)); }
+    const prepared:Record<string,any[]>={};
+    for(const kind of kinds) {
+      if(!Object.prototype.hasOwnProperty.call(data,kind)) continue;
+      if(!Array.isArray(data[kind]) || data[kind].length>5000) return json({error:`La lista ${kind} del respaldo no es válida.`},400,origin);
+      prepared[kind]=[];
+      for(const item of data[kind]) {
+        if(!item || typeof item!=='object' || Array.isArray(item)) return json({error:`Un registro de ${kind} no es válido.`},400,origin);
+        const suppliedId=String(item.id||'');
+        if(suppliedId.length>200 || /[\u0000-\u001f\u007f]/.test(suppliedId)) return json({error:`El identificador de un registro de ${kind} no es válido.`},400,origin);
+        const fixed={...item,userId:user.id,id:suppliedId||`${kind}_${crypto.randomUUID()}`};
+        const body=JSON.stringify(fixed);
+        if(!body || body.length>262144) return json({error:`Un registro de ${kind} supera el tamaño permitido.`},400,origin);
+        prepared[kind].push({id:fixed.id,body});
+      }
     }
-    if(data.settings) this.sql.exec('INSERT OR REPLACE INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,'settings',user.id,JSON.stringify({...data.settings,userId:user.id}));
+    const hasSettings=Object.prototype.hasOwnProperty.call(data,'settings');
+    if(hasSettings && (!data.settings || typeof data.settings!=='object' || Array.isArray(data.settings))) return json({error:'La configuración del respaldo no es válida.'},400,origin);
+    const settingsBody=hasSettings ? JSON.stringify({...data.settings,userId:user.id}) : null;
+    this.ctx.storage.transactionSync(()=>{
+      for(const kind of kinds) if(prepared[kind]) {
+        this.sql.exec('DELETE FROM items WHERE user_id=? AND kind=?',user.id,kind);
+        for(const item of prepared[kind]) this.sql.exec('INSERT OR REPLACE INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,kind,item.id,item.body);
+      }
+      if(settingsBody) this.sql.exec('INSERT OR REPLACE INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,'settings',user.id,settingsBody);
+    });
     return json({success:true,message:'Respaldo restaurado exitosamente.'},200,origin);
   }
   private async saveSettings(request: Request,user: User,origin: string) {
@@ -409,3 +430,4 @@ export class StreamFlowStore {
     return json({success:true,settings:item},200,origin);
   }
 }
+
