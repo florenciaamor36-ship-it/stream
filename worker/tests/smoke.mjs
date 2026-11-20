@@ -32,6 +32,8 @@ let preflight = await fetch(`${base}/api/data`, { method: 'OPTIONS', headers: { 
 assert(preflight.status === 204 && preflight.headers.get('access-control-allow-origin') === origin, 'CORS preflight failed');
 
 // Bootstrap an isolated synthetic admin; no production admin data is used.
+// The reserved admin email must not be claimable by ordinary registration.
+await call('/api/auth/register', { method: 'POST', body: { email: adminEmail, password, name: 'Synthetic attacker' }, expect: 403 });
 const admin = authUser((await call('/api/auth/bootstrap', { method: 'POST', body: { email: adminEmail, password, name: 'Synthetic admin', secret: bootstrapSecret }, expect: 201 })).data);
 const secondBootstrap = await call('/api/auth/bootstrap', { method: 'POST', body: { email: adminEmail, password, secret: bootstrapSecret }, expect: 409 });
 assert(secondBootstrap.data.error, 'bootstrap was not one-time');

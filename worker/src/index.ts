@@ -108,7 +108,7 @@ export class StreamFlowStore {
     const path = url.pathname;
     const now = new Date();
     try {
-      if (request.method === 'POST' && path === '/api/auth/register') return await this.register(request, options.origin);
+      if (request.method === 'POST' && path === '/api/auth/register') return await this.register(request, options.origin, options.adminEmail);
       if (request.method === 'POST' && path === '/api/auth/login') return await this.login(request, options.origin);
       if (request.method === 'POST' && path === '/api/auth/bootstrap') return await this.bootstrap(request, options, options.origin);
       if (request.method === 'POST' && path === '/api/auth/redeem-token') return await this.redeem(request, options.origin);
@@ -206,13 +206,13 @@ export class StreamFlowStore {
     return row ? { user: safeUser(row), tokenHash: hash } : null;
   }
   private enriched(user: User, token?: string) { return { ...user, serverTime: new Date().toISOString(), isLocked: isLocked(user), ...(token ? { sessionToken: token } : {}) }; }
-  private async register(request: Request, origin: string) {
+  private async register(request: Request, origin: string, adminEmail: string) {
     const ip=request.headers.get('cf-connecting-ip')||'unknown';
     if (await this.hitRateLimit('register',ip,5,3_600_000)) return json({error:'Demasiados registros desde esta conexión. Probá más tarde.'},429,origin);
     const b = await this.body(request); const email = String(b.email || '').trim().toLowerCase(); const password = String(b.password || ''); const name = String(b.name || email.split('@')[0]).trim().slice(0, 120);
     if (!validEmail(email) || password.length < 10 || password.length > 256) return json({ error: 'Ingresá un correo válido y una contraseña de al menos 10 caracteres.' }, 400, origin);
     if (this.userByEmail(email)) return json({ error: 'El correo electrónico ya está registrado.' }, 409, origin);
-    if (this.env.adminEmail && email === this.env.adminEmail.toLowerCase()) return json({ error: 'Esta cuenta requiere la configuración segura del administrador.' }, 403, origin);
+    if (adminEmail && email === adminEmail.toLowerCase()) return json({ error: 'Esta cuenta requiere la configuración segura del administrador.' }, 403, origin);
     const id = `user_${crypto.randomUUID()}`, created = new Date().toISOString(), grace = datePlusDays(3), hash = await passwordHash(password);
     this.sql.exec('INSERT INTO users(id,email,password_hash,name,created_at,grace_until,subscription_until) VALUES(?,?,?,?,?,?,?)', id,email,hash,name,created,grace,grace);
     const user = safeUser(this.sql.exec('SELECT * FROM users WHERE id=?', id).toArray()[0]);
