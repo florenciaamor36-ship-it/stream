@@ -28,7 +28,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   availableProfilesCount,
   user,
 }) => {
-  const isAdmin = user?.isAdmin !== false; // Default to true for demo admin or if specified
+  const isAdmin = user?.isAdmin === true;
 
   const allMenuItems = [
     {
@@ -43,7 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Tv,
       badge: availableProfilesCount > 0 ? `${availableProfilesCount} Libres` : undefined,
       badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'sales' as NavigationTab,
@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'suppliers' as NavigationTab,
       label: 'Proveedores',
       icon: Truck,
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'customers' as NavigationTab,
@@ -75,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'templates' as NavigationTab,
       label: 'Plantillas de Mensajes',
       icon: MessageSquareCode,
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'tokens' as NavigationTab,
@@ -87,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'settings' as NavigationTab,
       label: 'Ajustes y Configuración',
       icon: Sliders,
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'info' as NavigationTab,

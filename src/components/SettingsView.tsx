@@ -461,7 +461,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Shield className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-white">Cambiar Credenciales Admin</h3>
+                <h3 className="font-bold text-base text-white">Cambiar Credenciales de Acceso</h3>
                 <p className="text-xs text-zinc-400">Actualiza tu correo y contraseña de acceso seguro.</p>
               </div>
             </div>
@@ -483,7 +483,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Error al actualizar');
-                    setSaveSuccessMsg('¡Credenciales de Administrador actualizadas con éxito!');
+                    setSaveSuccessMsg('¡Credenciales actualizadas con éxito!');
                     setTimeout(() => setSaveSuccessMsg(''), 4000);
                   } catch (err: any) {
                     alert(err.message || 'Error al guardar credenciales');
