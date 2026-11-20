@@ -26,6 +26,7 @@ import { apiRequest } from '../lib/storage';
 
 interface SettingsViewProps {
   user: User | null;
+  onUserUpdated: (user: User) => void;
   settings: UserSettings;
   customServices: CustomService[];
   onUpdateSettings: (newSettings: { currency?: string; currencySymbol?: string; theme?: string }) => Promise<void>;
@@ -135,6 +136,7 @@ const PRESET_COLORS = [
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   user,
+  onUserUpdated,
   settings,
   customServices,
   onUpdateSettings,
@@ -473,16 +475,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   const target = e.target as any;
                   const newEmail = target.email.value;
                   const newPassword = target.password.value;
+                  const currentPassword = target.currentPassword.value;
                   const newName = target.name.value;
 
                   try {
                     const res = await apiRequest('/api/auth/update-credentials', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id, newEmail, newPassword, newName }),
+                      body: JSON.stringify({ newEmail, newPassword, newName, currentPassword }),
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'Error al actualizar');
+                    if (data.user) onUserUpdated(data.user);
+                    target.password.value = '';
+                    target.currentPassword.value = '';
                     setSaveSuccessMsg('¡Credenciales actualizadas con éxito!');
                     setTimeout(() => setSaveSuccessMsg(''), 4000);
                   } catch (err: any) {
@@ -510,6 +516,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     defaultValue={user.email}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-red-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Contraseña actual (obligatoria)</label>
+                  <input type="password" name="currentPassword" autoComplete="current-password" required className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500" />
                 </div>
 
                 <div>

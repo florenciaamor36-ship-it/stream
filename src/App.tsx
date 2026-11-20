@@ -475,6 +475,8 @@ export default function App() {
 
           {currentTab === 'settings' && (
             <SettingsView
+              user={user}
+              onUserUpdated={setUser}
               settings={settings}
               customServices={customServices}
               onUpdateSettings={handleUpdateSettings}

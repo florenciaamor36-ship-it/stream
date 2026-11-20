@@ -113,7 +113,7 @@ export class StreamFlowStore {
       if (request.method === 'POST' && path === '/api/auth/bootstrap') return await this.bootstrap(request, options, options.origin);
       if (request.method === 'POST' && path === '/api/auth/redeem-token') return await this.redeem(request, options.origin);
       if (request.method === 'POST' && path === '/api/auth/accept-terms') return await this.authMutation(request, options.origin, 'terms');
-      if (request.method === 'POST' && path === '/api/auth/update-credentials') return await this.authMutation(request, options.origin, 'credentials');
+      if (request.method === 'POST' && path === '/api/auth/update-credentials') return await this.authMutation(request, options.origin, 'credentials', options.adminEmail);
 
       const auth = await this.authenticate(request);
       if (!auth) return json({ error: ERROR.unauthorized }, 401, options.origin);
@@ -246,21 +246,26 @@ export class StreamFlowStore {
     const user=safeUser(this.sql.exec('SELECT * FROM users WHERE id=?', id).toArray()[0]);
     return json({success:true,user:this.enriched(user,await this.issueSession(id))},201,options.origin);
   }
-  private async authMutation(request: Request, origin: string, kind: 'terms'|'credentials') {
+  private async authMutation(request: Request, origin: string, kind: 'terms'|'credentials', adminEmail = '') {
     const auth = await this.authenticate(request); if (!auth) return json({error:ERROR.unauthorized},401,origin);
     const b=await this.body(request), user=auth.user;
     if (kind==='terms') {
       const accepted=new Date().toISOString(); this.sql.exec('UPDATE users SET has_accepted_terms=1,accepted_terms_at=? WHERE id=?',accepted,user.id);
       return json({success:true,user:{...user,hasAcceptedTerms:true,acceptedTermsAt:accepted}},200,origin);
     }
-    const newEmail=typeof b.newEmail==='string'?b.newEmail.trim().toLowerCase():'', newPassword=typeof b.newPassword==='string'?b.newPassword.trim():'', newName=typeof b.newName==='string'?b.newName.trim().slice(0,120):'';
-    if (newEmail && (!validEmail(newEmail) || (this.userByEmail(newEmail) && newEmail!==user.email))) return json({error:'El correo electrónico ingresado ya está en uso o no es válido.'},400,origin);
     const row=this.sql.exec('SELECT * FROM users WHERE id=?',user.id).toArray()[0] as any;
+    const currentPassword=typeof b.currentPassword==='string'?b.currentPassword:'';
+    if (await this.hitRateLimit('update-credentials',user.id,5,900_000)) return json({error:'Demasiados intentos. Probá nuevamente en 15 minutos.'},429,origin);
+    if (!currentPassword || currentPassword.length>256 || !await passwordMatches(currentPassword,row.password_hash)) return json({error:'La contraseña actual es incorrecta.'},403,origin);
+    const newEmail=typeof b.newEmail==='string'?b.newEmail.trim().toLowerCase():'', newPassword=typeof b.newPassword==='string'?b.newPassword:'', newName=typeof b.newName==='string'?b.newName.trim().slice(0,120):'';
+    if (newEmail && (!validEmail(newEmail) || (this.userByEmail(newEmail) && newEmail!==user.email))) return json({error:'El correo electrónico ingresado ya está en uso o no es válido.'},400,origin);
+    if (newEmail && adminEmail && newEmail===adminEmail.toLowerCase() && !user.isAdmin) return json({error:'Este correo está reservado.'},403,origin);
     if (newPassword && (newPassword.length < 10 || newPassword.length > 256)) return json({error:'La contraseña debe tener al menos 10 caracteres.'},400,origin);
     const hash=newPassword ? await passwordHash(newPassword) : row.password_hash;
     this.sql.exec('UPDATE users SET email=?,password_hash=?,name=? WHERE id=?',newEmail||user.email,hash,newName||user.name,user.id);
+    if (newPassword || (newEmail && newEmail!==user.email)) this.sql.exec('DELETE FROM sessions WHERE user_id=? AND token_hash<>?',user.id,auth.tokenHash);
     const updated=safeUser(this.sql.exec('SELECT * FROM users WHERE id=?',user.id).toArray()[0]);
-    return json({success:true,message:'Credenciales actualizadas correctamente.',user:{...updated,sessionToken:''}},200,origin);
+    return json({success:true,message:'Credenciales actualizadas correctamente.',user:updated},200,origin);
   }
   private async redeem(request: Request, origin: string) {
     const auth=await this.authenticate(request); if(!auth) return json({error:ERROR.unauthorized},401,origin);

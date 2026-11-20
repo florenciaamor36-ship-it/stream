@@ -49,6 +49,16 @@ const registered = authUser((await call('/api/auth/register', { method: 'POST', 
 await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password: 'Wrong-Synthetic-Password!' }, expect: 401 });
 const loggedIn = authUser((await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password } })).data);
 const other = authUser((await call('/api/auth/register', { method: 'POST', body: { email: `stream-isolation-${Date.now()}@example.test`, password, name: 'Isolated User' }, expect: 201 })).data);
+// Credential change requires current password, updates the profile, revokes other sessions and protects the reserved admin address.
+const otherSecond = authUser((await call('/api/auth/login', { method: 'POST', body: { email: other.user.email, password } })).data);
+await call('/api/auth/update-credentials', { method:'POST', token: other.token, body:{newPassword:'New-Synthetic-Password-2026!'}, expect:403 });
+await call('/api/auth/update-credentials', { method:'POST', token: other.token, body:{currentPassword:'incorrect',newPassword:'New-Synthetic-Password-2026!'}, expect:403 });
+await call('/api/auth/update-credentials', { method:'POST', token: other.token, body:{currentPassword:password,newEmail:adminEmail}, expect:403 });
+const changed = await call('/api/auth/update-credentials', { method:'POST', token: other.token, body:{currentPassword:password,newPassword:'New-Synthetic-Password-2026!',newName:'Updated Synthetic'} });
+assert(changed.data.user.name==='Updated Synthetic', 'credential update did not return updated user');
+await call('/api/data', { token:otherSecond.token, expect:401 });
+await call('/api/auth/login', { method:'POST', body:{email:other.user.email,password}, expect:401 });
+await call('/api/auth/login', { method:'POST', body:{email:other.user.email,password:'New-Synthetic-Password-2026!'} });
 await call('/api/data', { expect: 401 });
 await call('/api/auth/accept-terms', { method: 'POST', token: loggedIn.token, body: { userId: 'untrusted-id' } });
 
