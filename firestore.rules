@@ -5,8 +5,16 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    // V1 is deliberately a data-minimized subset. It excludes account logins,
-    // passwords, PINs, nested profile objects, and Android-only fields.
+    // Preserve the active legacy grants exactly; existing Android behavior/data stay intact.
+    match /usuarios/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /tokens_usados/{token} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Minimal web-compatible records only. Credentials, PINs, nested profiles,
+    // and all fields not explicitly listed below remain local-only / denied.
     function ownsSafeAccount(uid) {
       return request.resource.data.keys().hasAll(['userId'])
         && request.resource.data.keys().hasOnly([
@@ -47,8 +55,7 @@ service cloud.firestore {
       allow create, update: if isOwner(uid) && ownsSafeClient(uid);
     }
 
-    // Emulator fixture only. No legacy /usuarios, /tokens_usados or other path
-    // receives access from this test ruleset. Production rules are untouched.
+    // Default deny for every other namespace and collection.
     match /{document=**} {
       allow read, write: if false;
     }

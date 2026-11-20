@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 
-const projectId = 'demo-stream-flow-contract';
+const projectId = 'demo-stream-flow-combined-rules';
 const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
 const env = await initializeTestEnvironment({ projectId, firestore: { rules } });
 const collections = ['accounts', 'sales', 'clients'];
@@ -15,14 +15,38 @@ const safeDoc = (uid, marker, collectionName) => {
 };
 
 try {
-  // Seed legacy/unrelated paths with synthetic sentinel records in rules-disabled context.
+  // All fixtures are synthetic and seeded only inside this emulator.
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, 'usuarios', 'sentinel'), { marker: 'must-survive' });
-    await setDoc(doc(db, 'tokens_usados', 'sentinel'), { marker: 'must-survive' });
-    await setDoc(doc(db, 'unrelated_collection', 'sentinel'), { marker: 'must-survive' });
+    await setDoc(doc(db, 'usuarios', 'alice-test-uid'), { marker: 'legacy-user-sentinel' });
+    await setDoc(doc(db, 'usuarios', 'bob-test-uid'), { marker: 'other-owner-sentinel' });
+    await setDoc(doc(db, 'tokens_usados', 'synthetic-token-sentinel'), { marker: 'legacy-token-sentinel', used: false });
+    await setDoc(doc(db, 'unrelated_collection', 'sentinel'), { marker: 'must-remain-denied' });
   });
 
+  const alice = env.authenticatedContext('alice-test-uid').firestore();
+  const bob = env.authenticatedContext('bob-test-uid').firestore();
+  const unauthenticated = env.unauthenticatedContext().firestore();
+
+  // Existing production behavior at /usuarios/{userId}: only that authenticated owner may read/write.
+  const aliceLegacyUser = doc(alice, 'usuarios', 'alice-test-uid');
+  await assertSucceeds(getDoc(aliceLegacyUser), 'legacy user owner read retained');
+  await assertSucceeds(setDoc(aliceLegacyUser, { marker: 'legacy-user-updated' }), 'legacy user owner write retained');
+  await assertFails(getDoc(doc(bob, 'usuarios', 'alice-test-uid')), 'legacy user cross-owner read denied');
+  await assertFails(setDoc(doc(bob, 'usuarios', 'alice-test-uid'), { marker: 'tamper' }), 'legacy user cross-owner write denied');
+  await assertFails(getDoc(doc(unauthenticated, 'usuarios', 'alice-test-uid')), 'legacy user unauthenticated read denied');
+  await assertFails(setDoc(doc(unauthenticated, 'usuarios', 'alice-test-uid'), { marker: 'tamper' }), 'legacy user unauthenticated write denied');
+
+  // Preserve the ACTIVE broad authenticated behavior for /tokens_usados/{token}, without touching real tokens.
+  const legacyToken = doc(alice, 'tokens_usados', 'synthetic-token-sentinel');
+  await assertSucceeds(getDoc(legacyToken), 'legacy token authenticated read retained');
+  await assertSucceeds(setDoc(legacyToken, { marker: 'legacy-token-updated', used: true }), 'legacy token authenticated write retained');
+  await assertSucceeds(getDoc(doc(bob, 'tokens_usados', 'synthetic-token-sentinel')), 'legacy token cross-user read retained');
+  await assertSucceeds(setDoc(doc(bob, 'tokens_usados', 'synthetic-token-sentinel'), { marker: 'legacy-token-updated-by-bob', used: true }), 'legacy token cross-user write retained');
+  await assertFails(getDoc(doc(unauthenticated, 'tokens_usados', 'synthetic-token-sentinel')), 'legacy token unauthenticated read denied');
+  await assertFails(setDoc(doc(unauthenticated, 'tokens_usados', 'synthetic-token-sentinel'), { marker: 'tamper' }), 'legacy token unauthenticated write denied');
+
+  // New web paths: owner CRUD works; cross-owner/anonymous access and sensitive fields are rejected.
   for (const uid of ['alice-test-uid', 'bob-test-uid']) {
     const db = env.authenticatedContext(uid).firestore();
     for (const collectionName of collections) {
@@ -34,14 +58,13 @@ try {
       const ownList = await assertSucceeds(getDocs(collection(db, 'users', uid, collectionName)));
       assert.equal(ownList.size, 1, `${uid} list own ${collectionName}`);
       await assertSucceeds(deleteDoc(own), `${uid} delete own ${collectionName}`);
-      await assertFails(setDoc(doc(db, 'users', uid, collectionName, 'bad-password'), { ...safeDoc(uid, 'bad', collectionName), accountPassword: 'synthetic-secret' }), 'credential field denied');
-      await assertFails(setDoc(doc(db, 'users', uid, collectionName, 'bad-pin'), { ...safeDoc(uid, 'bad', collectionName), profilePin: '1234' }), 'PIN field denied');
+      for (const [field, value] of [['accountPassword', 'synthetic-secret'], ['password', 'synthetic-secret'], ['pin', '1234'], ['masterPin', '1234'], ['profilePin', '1234'], ['credentials', 'synthetic-secret']]) {
+        await assertFails(setDoc(doc(db, 'users', uid, collectionName, `bad-${field}`), { ...safeDoc(uid, 'bad', collectionName), [field]: value }), `plaintext/sensitive field ${field} denied`);
+      }
       await assertFails(setDoc(doc(db, 'users', uid, collectionName, 'bad-uid'), safeDoc('other-test-uid', 'spoof', collectionName)), 'spoofed userId denied');
     }
   }
 
-  const alice = env.authenticatedContext('alice-test-uid').firestore();
-  const bob = env.authenticatedContext('bob-test-uid').firestore();
   for (const name of collections) {
     const aliceRef = doc(alice, 'users', 'alice-test-uid', name, 'cross-owner-fixture');
     await assertSucceeds(setDoc(aliceRef, safeDoc('alice-test-uid', name, name)));
@@ -49,26 +72,24 @@ try {
     await assertFails(setDoc(doc(bob, 'users', 'alice-test-uid', name, 'cross-owner-write'), safeDoc('alice-test-uid', 'spoof', name)), `cross-owner create denied: ${name}`);
     await assertFails(updateDoc(doc(bob, 'users', 'alice-test-uid', name, 'cross-owner-fixture'), { notes: 'tampered' }), `cross-owner update denied: ${name}`);
     await assertFails(deleteDoc(doc(bob, 'users', 'alice-test-uid', name, 'cross-owner-fixture')), `cross-owner delete denied: ${name}`);
+    const anon = doc(unauthenticated, 'users', 'alice-test-uid', name, 'anonymous');
+    await assertFails(getDoc(anon), `anonymous read denied: ${name}`);
+    await assertFails(setDoc(anon, safeDoc('alice-test-uid', 'anonymous', name)), `anonymous write denied: ${name}`);
   }
 
-  const unauthenticated = env.unauthenticatedContext().firestore();
-  for (const name of collections) {
-    const ref = doc(unauthenticated, 'users', 'alice-test-uid', name, 'anonymous');
-    await assertFails(getDoc(ref), `anonymous read denied: ${name}`);
-    await assertFails(setDoc(ref, safeDoc('alice-test-uid', 'anonymous', name)), `anonymous write denied: ${name}`);
+  for (const path of ['unrelated_collection/sentinel', 'users/alice-test-uid/unrelated/sentinel']) {
+    await assertFails(getDoc(doc(alice, ...path.split('/'))), `unrelated path denied: ${path}`);
+    await assertFails(setDoc(doc(alice, ...path.split('/')), { marker: 'no access' }), `unrelated write denied: ${path}`);
   }
 
-  // Assert protected pre-existing namespaces were neither granted by this ruleset nor changed.
+  // Verify the synthetic legacy sentinels survive this test's new-path operations.
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    for (const path of ['usuarios/sentinel', 'tokens_usados/sentinel', 'unrelated_collection/sentinel']) {
-      assert.equal((await getDoc(doc(db, path))).data().marker, 'must-survive', `sentinel preserved: ${path}`);
-    }
+    assert.equal((await getDoc(doc(db, 'usuarios', 'alice-test-uid'))).data().marker, 'legacy-user-updated');
+    assert.equal((await getDoc(doc(db, 'tokens_usados', 'synthetic-token-sentinel'))).data().marker, 'legacy-token-updated-by-bob');
+    assert.equal((await getDoc(doc(db, 'unrelated_collection', 'sentinel'))).data().marker, 'must-remain-denied');
   });
-  for (const path of ['usuarios/sentinel', 'tokens_usados/sentinel', 'unrelated_collection/sentinel']) {
-    await assertFails(getDoc(doc(alice, ...path.split('/'))), `unrelated path remains denied: ${path}`);
-  }
-  console.log('PASS: synthetic owner CRUD, cross-owner and unauthenticated denials, UID spoofing, credential/PIN rejection, unrelated path preservation');
+  console.log('PASS combined rules: legacy /usuarios owner behavior and authenticated /tokens_usados behavior preserved; new owner-only CRUD, cross-owner/anonymous denial, UID spoofing, sensitive-field rejection, unrelated paths denied; synthetic emulator data only');
 } finally {
   await env.cleanup();
 }
