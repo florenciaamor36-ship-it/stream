@@ -5,7 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    base: '/stream/',
+    base: process.env.VITE_BASE_PATH || '/stream/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

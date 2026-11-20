@@ -1,0 +1,26 @@
+name: Stream Flow isolated Pages preview build
+on:
+  workflow_dispatch:
+  push:
+    branches: ["preview/worker-api-integration"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Build isolated static preview
+        run: npm run build
+        env:
+          VITE_BASE_PATH: /
+          VITE_STREAM_API_URL: https://stream-flow-api-preview.tiendasshoficial.workers.dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stream-flow-preview-dist
+          path: dist/
+          retention-days: 1
