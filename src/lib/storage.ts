@@ -4,15 +4,57 @@ const STREAM_API_BASE = String(import.meta.env.VITE_STREAM_API_URL || '').replac
 const SESSION_KEY = 'stream_flow_session';
 export const apiRemoteConfigured = Boolean(STREAM_API_BASE);
 
+// Keep only the opaque authentication token across app/browser restarts. App data stays server-side.
+function getStoredSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const persistent = window.localStorage.getItem(SESSION_KEY);
+    if (persistent) return persistent;
+    // Migrate an existing in-tab login once; sessionStorage disappears when the app is closed.
+    const legacy = window.sessionStorage.getItem(SESSION_KEY);
+    if (legacy) {
+      window.localStorage.setItem(SESSION_KEY, legacy);
+      window.sessionStorage.removeItem(SESSION_KEY);
+      return legacy;
+    }
+  } catch { /* Storage may be unavailable in private/restricted browsing. */ }
+  return null;
+}
+
+function storeSessionToken(token: string) {
+  try { if (typeof window !== 'undefined') window.localStorage.setItem(SESSION_KEY, token); } catch {}
+}
+
+function removeStoredSessionToken() {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(SESSION_KEY);
+      window.sessionStorage.removeItem(SESSION_KEY);
+    }
+  } catch {}
+}
+
 export async function clearApiSession() {
   try { if (apiRemoteConfigured) await apiRequest('/api/auth/logout', { method: 'POST' }); } catch {}
-  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
+  removeStoredSessionToken();
+}
+
+export async function apiRestoreSession(): Promise<User | null> {
+  if (!getStoredSessionToken()) return null;
+  try {
+    const res = await apiRequest('/api/auth/me');
+    const data = await res.json();
+    return data?.user || null;
+  } catch (error: any) {
+    if (String(error?.message || '').includes('Sesión inválida o vencida')) removeStoredSessionToken();
+    return null;
+  }
 }
 
 export async function apiRequest(input: RequestInfo | URL, init: RequestInit = {}) {
   const path = typeof input === 'string' ? input : input.toString();
   const headers = new Headers(init.headers || {});
-  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(SESSION_KEY) : null;
+  const token = getStoredSessionToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(STREAM_API_BASE ? `${STREAM_API_BASE}${path}` : input, { ...init, headers });
   if (!response.ok) {
@@ -25,7 +67,7 @@ export async function apiRequest(input: RequestInfo | URL, init: RequestInit = {
 
 function saveSessionFromAuth(data: any) {
   const token = data?.user?.sessionToken;
-  if (token && typeof sessionStorage !== 'undefined') sessionStorage.setItem(SESSION_KEY, token);
+  if (token) storeSessionToken(token);
   if (data?.user?.sessionToken) delete data.user.sessionToken;
   return data;
 }

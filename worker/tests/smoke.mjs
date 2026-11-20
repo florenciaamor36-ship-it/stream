@@ -48,6 +48,8 @@ assert(issuedState.tokens.some((t) => t.id === issuedToken.id && !t.code), 'issu
 const registered = authUser((await call('/api/auth/register', { method: 'POST', body: { email: userEmail, password, name: 'Synthetic User' }, expect: 201 })).data);
 await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password: 'Wrong-Synthetic-Password!' }, expect: 401 });
 const loggedIn = authUser((await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password } })).data);
+const restoredSession = await call('/api/auth/me', { token: loggedIn.token });
+assert(restoredSession.data.success && restoredSession.data.user.email === userEmail && !('sessionToken' in restoredSession.data.user), 'persistent session restore endpoint failed or leaked token');
 const other = authUser((await call('/api/auth/register', { method: 'POST', body: { email: `stream-isolation-${Date.now()}@example.test`, password, name: 'Isolated User' }, expect: 201 })).data);
 // Credential change requires current password, updates the profile, revokes other sessions and protects the reserved admin address.
 const otherSecond = authUser((await call('/api/auth/login', { method: 'POST', body: { email: other.user.email, password } })).data);
@@ -163,5 +165,6 @@ assert(Array.isArray(logs) && logs.some((x) => x.status === 'SUCCESS'), 'token a
 // Session revocation is enforced server-side.
 await call('/api/auth/logout', { method: 'POST', token: loggedIn.token });
 await call('/api/data', { token: loggedIn.token, expect: 401 });
+await call('/api/auth/me', { token: loggedIn.token, expect: 401 });
 console.log('Stream Flow synthetic Worker smoke passed: auth, token, owner isolation, transactional sales, backup, CORS, logout and persistence.');
 

@@ -33,6 +33,7 @@ import {
   apiSaveCustomService,
   apiDeleteCustomService,
   apiAcceptTerms,
+  apiRestoreSession,
   apiRequest,
   clearApiSession,
 } from './lib/storage';
@@ -56,6 +57,7 @@ import { getDaysRemaining } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
 
@@ -80,6 +82,17 @@ export default function App() {
 
   // Modals
   const [newSaleModalOpen, setNewSaleModalOpen] = useState(false);
+
+  // Resume a valid server session when the app/WebView is reopened.
+  useEffect(() => {
+    let active = true;
+    apiRestoreSession().then((restoredUser) => {
+      if (active && restoredUser) setUser(restoredUser);
+    }).finally(() => {
+      if (active) setIsRestoringSession(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   // Initial Data Load
   const reloadData = async () => {
@@ -322,6 +335,10 @@ export default function App() {
   const subDays = user?.subscriptionUntil ? getDaysRemaining(user.subscriptionUntil, (user as any).serverTime) : 0;
   const graceDays = user?.gracePeriodUntil ? getDaysRemaining(user.gracePeriodUntil, (user as any).serverTime) : 0;
   const isAppLocked = user ? ((user as any).isLocked || (!user.isAdmin && subDays <= 0 && graceDays <= 0)) : false;
+
+  if (isRestoringSession) {
+    return <div className="min-h-screen bg-zinc-950 text-zinc-300 flex items-center justify-center">Restaurando sesión segura…</div>;
+  }
 
   if (!user) {
     return <AuthModal onLogin={handleLogin} onRegister={handleRegister} />;
