@@ -180,13 +180,13 @@ export const TokensView: React.FC<TokensViewProps> = ({
           </div>
           <div>
             <h4 className="font-bold text-sm text-white flex items-center gap-2">
-              Sistema Antifraude y Verificación Criptográfica Activo
+              Protección de tokens activa
               <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                HMAC 256
+                SHA-256
               </span>
             </h4>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Protección anti-fuerza bruta (máx. 5 intentos), validación de firma checksum y auditoría de IPs en tiempo real.
+              Códigos aleatorios de uso único, límites de intentos y registro de canjes.
             </p>
           </div>
         </div>
@@ -194,7 +194,7 @@ export const TokensView: React.FC<TokensViewProps> = ({
         <div className="flex items-center gap-3 text-xs font-semibold text-zinc-300 bg-zinc-950/80 px-3.5 py-2 rounded-xl border border-zinc-800">
           <div className="flex items-center gap-1.5 text-emerald-400">
             <Check className="w-3.5 h-3.5" />
-            <span>Checksum Algorítmico</span>
+            <span>Uso único</span>
           </div>
           <span className="text-zinc-700">|</span>
           <div className="flex items-center gap-1.5 text-indigo-400">
@@ -256,7 +256,7 @@ export const TokensView: React.FC<TokensViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {[...freshTokens, ...tokens.filter((tok) => !freshTokens.some((fresh) => fresh.id === tok.id))].map((tok) => (
+                {[...freshTokens.map(fresh => ({ ...fresh, ...tokens.find(tok => tok.id === fresh.id), code: fresh.code })), ...tokens.filter((tok) => !freshTokens.some((fresh) => fresh.id === tok.id))].map((tok) => (
                   <tr key={tok.id} className="hover:bg-zinc-800/40 transition">
                     <td className="py-2.5 px-4 font-mono font-bold text-white tracking-wider">{tok.code || 'Código mostrado únicamente al generarlo'}</td>
                     <td className="py-2.5 px-4 text-zinc-300 font-semibold">{tok.days || 30} Días</td>
@@ -305,16 +305,15 @@ export const TokensView: React.FC<TokensViewProps> = ({
                   <tr>
                     <th className="py-2.5 px-4">Fecha / Hora</th>
                     <th className="py-2.5 px-4">Usuario / Email</th>
-                    <th className="py-2.5 px-4">Código Ingresado</th>
+                    <th className="py-2.5 px-4">Huella del código</th>
                     <th className="py-2.5 px-4">Estado Antifraude</th>
-                    <th className="py-2.5 px-4">IP Origen</th>
                     <th className="py-2.5 px-4">Detalle de Auditoría</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60 font-mono text-[11px]">
                   {tokenAuditLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-zinc-500 font-sans">
+                      <td colSpan={5} className="py-6 text-center text-zinc-500 font-sans">
                         No hay intentos de canje registrados aún.
                       </td>
                     </tr>
@@ -350,7 +349,6 @@ export const TokensView: React.FC<TokensViewProps> = ({
                               {statusText}
                             </span>
                           </td>
-                          <td className="py-2 px-4 text-zinc-400">{log.ip || '127.0.0.1'}</td>
                           <td className="py-2 px-4 font-sans text-zinc-400 text-[10px]">{log.details || '-'}</td>
                         </tr>
                       );

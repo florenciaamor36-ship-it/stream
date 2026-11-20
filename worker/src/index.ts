@@ -129,7 +129,7 @@ export class StreamFlowStore {
           else (result[row.kind] ||= []).push(body);
         }
         if (user.isAdmin) {
-          result.tokens = this.sql.exec('SELECT code_hash,days,created_at,used_by,used_at FROM tokens ORDER BY created_at DESC').toArray().map((t: any) => ({ id: `tok_${t.code_hash.slice(0, 12)}`, code: '', days: t.days, isUsed: !!t.used_by, createdAt: t.created_at, usedByEmail: t.used_by }));
+          result.tokens = this.sql.exec('SELECT code_hash,days,created_at,used_by,used_at FROM tokens ORDER BY created_at DESC').toArray().map((t: any) => ({ id: `tok_${t.code_hash}`, code: '', days: t.days, isUsed: !!t.used_by, createdAt: t.created_at, usedByEmail: t.used_by }));
           result.tokenAuditLogs = this.sql.exec('SELECT id,user_id,user_email,token_fingerprint,status,created_at,details FROM audits ORDER BY created_at DESC LIMIT 300').toArray().map((a: any) => ({ id: a.id, userId: a.user_id, userEmail: a.user_email, tokenCode: a.token_fingerprint, status: a.status, timestamp: a.created_at, details: a.details }));
         }
         return json(result, 200, options.origin);
@@ -143,7 +143,7 @@ export class StreamFlowStore {
           while (this.sql.exec('SELECT code_hash FROM tokens WHERE code_hash=?', hash).toArray().length) { code = tokenCode(days); hash = await sha256(code); }
           this.sql.exec('INSERT INTO tokens(code_hash,days,created_at) VALUES(?,?,?)', hash, days, now.toISOString());
           // Plain token is returned once to the administrator and is never persisted.
-          created.push({ id: `tok_${crypto.randomUUID()}`, code, days, isUsed: false, createdAt: now.toISOString() });
+          created.push({ id: `tok_${hash}`, code, days, isUsed: false, createdAt: now.toISOString() });
         }
         return json({ success: true, tokens: created }, 200, options.origin);
       }

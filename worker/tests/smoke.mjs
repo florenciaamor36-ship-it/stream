@@ -40,6 +40,9 @@ assert(secondBootstrap.data.error, 'bootstrap was not one-time');
 const createdTokens = await call('/api/tokens/generate', { method: 'POST', token: admin.token, body: { count: 1, days: 30 } });
 const redeemCode = createdTokens.data.tokens?.[0]?.code;
 assert(typeof redeemCode === 'string' && redeemCode.length > 15, 'server did not issue a token');
+const issuedToken = createdTokens.data.tokens[0];
+const issuedState = (await call('/api/data', { token: admin.token })).data;
+assert(issuedState.tokens.some((t) => t.id === issuedToken.id && !t.code), 'issued token id must match history without exposing its code');
 
 // Registration, password login, wrong-password rejection, bearer protection and terms.
 const registered = authUser((await call('/api/auth/register', { method: 'POST', body: { email: userEmail, password, name: 'Synthetic User' }, expect: 201 })).data);
