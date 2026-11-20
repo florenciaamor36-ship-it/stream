@@ -258,8 +258,8 @@ export class StreamFlowStore {
     if (await this.hitRateLimit('update-credentials',user.id,5,900_000)) return json({error:'Demasiados intentos. Probá nuevamente en 15 minutos.'},429,origin);
     if (!currentPassword || currentPassword.length>256 || !await passwordMatches(currentPassword,row.password_hash)) return json({error:'La contraseña actual es incorrecta.'},403,origin);
     const newEmail=typeof b.newEmail==='string'?b.newEmail.trim().toLowerCase():'', newPassword=typeof b.newPassword==='string'?b.newPassword:'', newName=typeof b.newName==='string'?b.newName.trim().slice(0,120):'';
-    if (newEmail && (!validEmail(newEmail) || (this.userByEmail(newEmail) && newEmail!==user.email))) return json({error:'El correo electrónico ingresado ya está en uso o no es válido.'},400,origin);
     if (newEmail && adminEmail && newEmail===adminEmail.toLowerCase() && !user.isAdmin) return json({error:'Este correo está reservado.'},403,origin);
+    if (newEmail && (!validEmail(newEmail) || (this.userByEmail(newEmail) && newEmail!==user.email))) return json({error:'El correo electrónico ingresado ya está en uso o no es válido.'},400,origin);
     if (newPassword && (newPassword.length < 10 || newPassword.length > 256)) return json({error:'La contraseña debe tener al menos 10 caracteres.'},400,origin);
     const hash=newPassword ? await passwordHash(newPassword) : row.password_hash;
     this.sql.exec('UPDATE users SET email=?,password_hash=?,name=? WHERE id=?',newEmail||user.email,hash,newName||user.name,user.id);
