@@ -1,0 +1,22 @@
+name: Build isolated Worker preview bundle
+on:
+  workflow_dispatch:
+  push:
+    branches: ["preview/worker-api-integration"]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Bundle isolated Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml --outdir .worker-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stream-flow-worker-preview-bundle
+          path: .worker-bundle/
+          retention-days: 1
