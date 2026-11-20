@@ -14,6 +14,10 @@ This branch introduces an API adapter and a Cloudflare Worker candidate for a se
 
 `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/accept-terms`, `POST /api/auth/update-credentials`, `POST /api/auth/redeem-token`; authenticated `GET /api/data`; authenticated CRUD for providers, accounts, customers, sales (including `/renew`), templates, custom services, settings, backup export/restore; admin-only token generation and audit listing. Bearer authorization is required for all non-login/register operations.
 
+## Test harness
+
+The preview workflow runs Wrangler in local mode with an ephemeral SQLite Durable Object and only synthetic `.example.test` accounts; `worker/tests/smoke.mjs` exercises registration, login/wrong-password denial, bootstrap-once, server-generated token entitlement and one-time redemption, bearer protection, CORS, terms, CRUD/renew/delete, per-user isolation, backup/restore, audit and session revocation. No live user data is used.
+
 ## Remaining gates before a usable account preview
 
 1. Build and deploy the Worker candidate under a separate staging script with its own SQLite-backed Durable Object. Set and verify only the allowed Pages origin, then run synthetic register/login/session, subscription redemption, every CRUD route, backup and persistence-across-requests smoke tests.

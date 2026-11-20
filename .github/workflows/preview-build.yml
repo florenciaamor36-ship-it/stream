@@ -18,6 +18,17 @@ jobs:
       - run: npm install
       - name: Build Worker bundle without deploying
         run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
+      - name: Run isolated Durable Object API smoke suite
+        run: |
+          npx --yes wrangler@4 dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787 --persist-to /tmp/stream-flow-do-state --var 'ADMIN_EMAIL:stream-smoke-admin@example.test' --var 'BOOTSTRAP_ADMIN_SECRET:ci-only-synthetic-bootstrap-secret' > /tmp/stream-flow-wrangler.log 2>&1 &
+          echo $! > /tmp/stream-flow-wrangler.pid
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8787/health >/dev/null || { cat /tmp/stream-flow-wrangler.log; exit 1; }
+          STREAM_API_URL=http://127.0.0.1:8787 node worker/tests/smoke.mjs
+          kill $(cat /tmp/stream-flow-wrangler.pid) || true
       - name: Build static app with isolated API origin
         run: npm run build
         env:
