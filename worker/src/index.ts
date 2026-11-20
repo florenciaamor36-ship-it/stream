@@ -74,7 +74,7 @@ export default {
     if (requestOrigin && requestOrigin !== origin) return json({ error: 'Origen no permitido.' }, 403, 'null');
     if (request.method === 'OPTIONS') return json({}, 204, origin);
     const url = new URL(request.url);
-    if (url.pathname === '/health') return json({ ok: true, backend: 'stream-flow-staging' }, 200, origin);
+    if (url.pathname === '/health') return json({ ok: true, backend: 'stream-flow-api-preview' }, 200, origin);
     const id = env.STORE.idFromName('stream-flow-global');
     const stub = env.STORE.get(id);
     // Durable Object fetch has no RPC-style second argument; pass trusted metadata only on the internal request.
