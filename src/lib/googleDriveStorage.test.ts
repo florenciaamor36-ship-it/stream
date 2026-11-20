@@ -40,9 +40,11 @@ test('reads and detects stale Drive version before replacement', async () => {
 test('fails closed without a token and strips secrets before cloud upload', async () => {
   const store = new DriveStorage(() => null, async () => { throw new Error('must not call network'); }, '33333333-3333-4333-8333-333333333333');
   await assert.rejects(() => store.read(), /disconnected/i);
-  const sanitized = removeSensitiveFields({ accounts: [{ accountPassword: 'secret', masterPin: '1234', profiles: [{ pin: '5678' }] }], sales: [{ accountPassword: 'secret', pin: '9999' }], users: [{ id: 'u1', email: 'u@example.test', name: 'Test', createdAt: '', gracePeriodUntil: '', subscriptionUntil: '', tokensRedeemed: 0 }], tokens: [{ code: 'x' }], customers: [] }) as any;
+  const sanitized = removeSensitiveFields({ accounts: [{ accountPassword: 'secret', accountEmail: 'acct@example.test', masterPin: '1234', profiles: [{ pin: '5678' }] }], sales: [{ accountPassword: 'secret', accountEmail: 'acct@example.test', pin: '9999', customerName: 'Private Name' }], users: [{ id: 'u1', email: 'u@example.test', name: 'Test', createdAt: '', gracePeriodUntil: '', subscriptionUntil: '', tokensRedeemed: 0 }], tokens: [{ code: 'x' }], customers: [{ name: 'Private Name' }], providers: [{ phone: '555' }] }) as any;
   assert.deepEqual(sanitized.accounts, [{ profiles: [{}] }]);
   assert.deepEqual(sanitized.sales, [{}]);
+  assert.equal('customers' in sanitized, false);
+  assert.equal('providers' in sanitized, false);
   assert.equal('users' in sanitized, false);
   assert.equal('tokens' in sanitized, false);
 });
