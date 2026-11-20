@@ -49,8 +49,9 @@ export class DriveStorage {
 // No account/password/PIN/token/audit records are uploaded without a user-approved encryption design.
 export function removeSensitiveFields(source: any): Record<string, unknown> {
   const data = structuredClone(source || {});
-  for (const a of data.accounts || []) { delete a.accountPassword; delete a.masterPin; for (const p of a.profiles || []) delete p.pin; }
-  for (const s of data.sales || []) { delete s.accountPassword; delete s.pin; }
-  delete data.users; delete data.tokens; delete data.tokenAuditLogs;
+  for (const a of data.accounts || []) { delete a.accountPassword; delete a.accountEmail; delete a.masterPin; for (const p of a.profiles || []) delete p.pin; }
+  for (const s of data.sales || []) { delete s.accountPassword; delete s.accountEmail; delete s.pin; delete s.customerName; delete s.customerPhone; delete s.customerId; }
+  // Customer/provider directories contain personal contact data; keep local until encryption is designed.
+  delete data.customers; delete data.providers; delete data.users; delete data.tokens; delete data.tokenAuditLogs; delete data.user;
   return data;
 }
