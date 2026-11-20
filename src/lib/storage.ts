@@ -4,7 +4,8 @@ const STREAM_API_BASE = String(import.meta.env.VITE_STREAM_API_URL || '').replac
 const SESSION_KEY = 'stream_flow_session';
 export const apiRemoteConfigured = Boolean(STREAM_API_BASE);
 
-export function clearApiSession() {
+export async function clearApiSession() {
+  try { if (apiRemoteConfigured) await apiRequest('/api/auth/logout', { method: 'POST' }); } catch {}
   if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
 }
 

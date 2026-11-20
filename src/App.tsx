@@ -168,7 +168,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
-    clearApiSession();
+    void clearApiSession();
     localStorage.removeItem('stream_control_user');
   };
 

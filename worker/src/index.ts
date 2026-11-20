@@ -117,6 +117,7 @@ export class StreamFlowStore {
       const auth = await this.authenticate(request);
       if (!auth) return json({ error: ERROR.unauthorized }, 401, options.origin);
       const user = auth.user;
+      if (path === '/api/auth/logout' && request.method === 'POST') { this.sql.exec('DELETE FROM sessions WHERE token_hash=?', auth.tokenHash); return json({success:true},200,options.origin); }
       if (isLocked(user) && !(path === '/api/backup/export' && request.method === 'GET')) return json({ error: ERROR.locked }, 402, options.origin);
       if (path === '/api/data' && request.method === 'GET') {
         const items = this.sql.exec('SELECT kind,id,body FROM items WHERE user_id=?', user.id).toArray() as Row[];
