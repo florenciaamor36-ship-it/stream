@@ -6,8 +6,9 @@ test('creates appData file with versioned envelope and only appData scope API su
   const calls: { url: string; init?: RequestInit }[] = [];
   const mock = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); calls.push({ url, init });
+    if (url.includes('/upload/')) return Response.json({ id: 'f1', name: 'stream-flow-pro-data-v1.json', version: '1' });
     if (url.includes('/files?')) return Response.json({ files: [] });
-    return Response.json({ id: 'f1', name: 'stream-flow-pro-data-v1.json', version: '1' });
+    throw new Error(`Unexpected request: ${url}`);
   };
   const store = new DriveStorage(() => 'mock-token', mock, '11111111-1111-4111-8111-111111111111');
   const out = await store.write({ customers: [{ id: 'c1' }] });
