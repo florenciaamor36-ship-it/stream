@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Account,
   Customer,
@@ -51,6 +51,8 @@ import { AuthModal } from './components/AuthModal';
 import { TermsModal } from './components/TermsModal';
 import { SubscriptionLockModal } from './components/SubscriptionLockModal';
 import { getDaysRemaining } from './lib/utils';
+import { DriveStorage, createSafeDriveData, type AppDataEnvelope } from './lib/googleDriveStorage';
+import { authorizeDrive, revokeDriveToken } from './lib/googleDriveAuth';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
@@ -82,6 +84,17 @@ export default function App() {
   const [customServices, setCustomServices] = useState<CustomService[]>([]);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
+  // Google Drive is a separate, explicit opt-in path; its token is memory-only.
+  const driveClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const [driveToken, setDriveToken] = useState<string | null>(null);
+  const driveTokenRef = useRef<string | null>(null);
+  const [driveExpiresAt, setDriveExpiresAt] = useState<number | null>(null);
+  const driveStorageRef = useRef<DriveStorage | null>(null);
+  const [driveBackup, setDriveBackup] = useState<AppDataEnvelope | null>(null);
+  const [driveRevision, setDriveRevision] = useState<string | null>(null);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [driveUpdatedAt, setDriveUpdatedAt] = useState<string | null>(null);
 
   // Modals
   const [newSaleModalOpen, setNewSaleModalOpen] = useState(false);
@@ -163,6 +176,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (driveTokenRef.current) void revokeDriveToken(driveTokenRef.current).catch(() => {});
+    driveTokenRef.current = null;
+    setDriveToken(null); setDriveExpiresAt(null); setDriveBackup(null); setDriveRevision(null); driveStorageRef.current = null;
     setUser(null);
     localStorage.removeItem('stream_control_user');
   };
@@ -263,6 +279,108 @@ export default function App() {
     await apiDeleteCustomService(id);
     reloadData();
   };
+
+  const handleConnectDrive = async () => {
+    if (!driveClientId) { setDriveError('Falta VITE_GOOGLE_CLIENT_ID: configura un ID público de cliente OAuth Web en el build y vuelve a desplegar.'); return; }
+    setDriveBusy(true); setDriveError(null);
+    try {
+      const grant = await authorizeDrive(driveClientId);
+      driveTokenRef.current = grant.accessToken;
+      setDriveToken(grant.accessToken); setDriveExpiresAt(grant.expiresAt);
+      const store = new DriveStorage(() => driveTokenRef.current);
+      driveStorageRef.current = store;
+      const envelope = await store.read();
+      if (envelope && envelope.data.ownerId !== user?.id) {
+        throw new Error('Esta copia de Drive pertenece a otra cuenta de Stream. No se restauró ni sobrescribió.');
+      }
+      setDriveBackup(envelope); setDriveRevision(store.revision); setDriveUpdatedAt(new Date().toLocaleString());
+    } catch (error: any) {
+      const token = driveTokenRef.current;
+      driveTokenRef.current = null; setDriveToken(null); setDriveExpiresAt(null); setDriveBackup(null); setDriveRevision(null); driveStorageRef.current = null;
+      if (token) void revokeDriveToken(token).catch(() => {});
+      setDriveError(error?.message || 'No se pudo conectar con Google Drive.');
+    } finally { setDriveBusy(false); }
+  };
+
+  const handleDisconnectDrive = async () => {
+    const token = driveTokenRef.current;
+    driveTokenRef.current = null; setDriveToken(null); setDriveExpiresAt(null); setDriveBackup(null); setDriveRevision(null); driveStorageRef.current = null; setDriveError(null);
+    if (token) { try { await revokeDriveToken(token); } catch { /* local disconnect still takes effect */ } }
+  };
+
+  const handleRefreshDrive = async () => {
+    const store = driveStorageRef.current;
+    if (!store) return;
+    setDriveBusy(true); setDriveError(null);
+    try {
+      const envelope = await store.read();
+      if (envelope && envelope.data.ownerId !== user?.id) throw new Error('La copia de Drive pertenece a otra cuenta de Stream; no se usará.');
+      setDriveBackup(envelope); setDriveRevision(store.revision); setDriveUpdatedAt(new Date().toLocaleString());
+    } catch (error: any) {
+      setDriveError(error?.message || 'No se pudo leer la copia de Drive.');
+      if (/expired|disconnected|authorization|pertenece a otra cuenta/i.test(error?.message || '')) {
+        const token = driveTokenRef.current;
+        driveTokenRef.current = null; setDriveToken(null); setDriveExpiresAt(null); setDriveBackup(null); setDriveRevision(null); driveStorageRef.current = null;
+        if (token && /pertenece a otra cuenta/i.test(error?.message || '')) void revokeDriveToken(token).catch(() => {});
+      }
+    } finally { setDriveBusy(false); }
+  };
+
+  const handleSaveDriveBackup = async () => {
+    if (!user || !driveStorageRef.current) return;
+    setDriveBusy(true); setDriveError(null);
+    try {
+      const data = createSafeDriveData({ ownerId: user.id, settings, customServices });
+      const envelope = await driveStorageRef.current.write(data);
+      setDriveBackup(envelope); setDriveRevision(driveStorageRef.current.revision); setDriveUpdatedAt(new Date().toLocaleString());
+    } catch (error: any) {
+      setDriveError(error?.message || 'No se pudo guardar la copia.');
+      if (/expired|disconnected|authorization/i.test(error?.message || '')) { driveTokenRef.current = null; setDriveToken(null); setDriveExpiresAt(null); driveStorageRef.current = null; }
+    } finally { setDriveBusy(false); }
+  };
+
+  const handleRestoreDriveBackup = async () => {
+    if (!user || !driveBackup) return;
+    if (driveBackup.data.ownerId !== user.id) { setDriveError('La copia pertenece a otra cuenta de Stream; no se restauró.'); return; }
+    if (!window.confirm('¿Restaurar moneda y tema y agregar servicios personalizados que no existan? No se borrarán datos locales ni se reemplazarán servicios existentes.')) return;
+    setDriveBusy(true); setDriveError(null);
+    try {
+      const previousRevision = driveRevision;
+      const latest = await driveStorageRef.current?.read();
+      if (!latest || driveStorageRef.current?.revision !== previousRevision) {
+        setDriveBackup(latest || null); setDriveRevision(driveStorageRef.current?.revision || null);
+        throw new Error('La copia cambió desde la última lectura. Revisá la copia actualizada antes de volver a restaurar.');
+      }
+      const restored = createSafeDriveData(latest.data);
+      const updatedSettings = { ...settings, ...restored.settings, userId: user.id };
+      await apiSaveSettings(updatedSettings);
+      setSettings(updatedSettings);
+      const known = new Set(customServices.map((item) => item.name.trim().toLocaleLowerCase()));
+      for (const service of restored.customServices) {
+        const key = service.name.trim().toLocaleLowerCase();
+        if (known.has(key)) continue;
+        await apiSaveCustomService({ userId: user.id, name: service.name, color: service.color, badgeBg: service.badgeBg, textColor: service.textColor, iconName: service.iconName, defaultProfiles: service.defaultProfiles });
+        known.add(key);
+      }
+      await reloadData(); setDriveUpdatedAt(new Date().toLocaleString());
+    } catch (error: any) { setDriveError(error?.message || 'No se pudo restaurar la configuración.'); }
+    finally { setDriveBusy(false); }
+  };
+
+  useEffect(() => {
+    if (!driveToken || !driveExpiresAt) return;
+    const delay = Math.max(0, driveExpiresAt - Date.now());
+    const timer = window.setTimeout(() => {
+      driveTokenRef.current = null; setDriveToken(null); setDriveExpiresAt(null); setDriveBackup(null); setDriveRevision(null); driveStorageRef.current = null;
+      setDriveError('El permiso temporal de Google Drive venció. Volvé a conectar para continuar; tus datos locales siguen disponibles.');
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [driveToken, driveExpiresAt]);
+
+  useEffect(() => {
+    // Never carry a Drive authorization across Stream account changes.
+    driveTokenRef.current = null; setDriveToken(null); setDriveExpiresAt(null); setDriveBackup(null); setDriveRevision(null); driveStorageRef.current = null;
+  }, [user?.id]);
 
   const handleExportBackup = async () => {
     if (!user) return;
@@ -484,11 +602,23 @@ export default function App() {
 
           {currentTab === 'settings' && (
             <SettingsView
+              user={user}
               settings={settings}
               customServices={customServices}
               onUpdateSettings={handleUpdateSettings}
               onAddCustomService={handleAddCustomService}
               onDeleteCustomService={handleDeleteCustomService}
+              driveConfigured={Boolean(driveClientId)}
+              driveConnected={Boolean(driveToken && driveExpiresAt && driveExpiresAt > Date.now())}
+              driveBusy={driveBusy}
+              driveUpdatedAt={driveUpdatedAt}
+              driveError={driveError}
+              driveBackup={driveBackup}
+              onConnectDrive={handleConnectDrive}
+              onDisconnectDrive={handleDisconnectDrive}
+              onSaveDriveBackup={handleSaveDriveBackup}
+              onRefreshDrive={handleRefreshDrive}
+              onRestoreDriveBackup={handleRestoreDriveBackup}
             />
           )}
 
@@ -498,3 +628,4 @@ export default function App() {
     </div>
   );
 }
+

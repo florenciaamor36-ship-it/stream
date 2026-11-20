@@ -22,6 +22,8 @@ import {
   Moon,
 } from 'lucide-react';
 import { formatMoney } from '../lib/utils';
+import { Cloud, CloudDownload, CloudUpload, RefreshCw, Unplug } from 'lucide-react';
+import type { AppDataEnvelope } from '../lib/googleDriveStorage';
 
 interface SettingsViewProps {
   user: User | null;
@@ -30,6 +32,17 @@ interface SettingsViewProps {
   onUpdateSettings: (newSettings: { currency?: string; currencySymbol?: string; theme?: string }) => Promise<void>;
   onAddCustomService: (service: { name: string; color: string; defaultProfiles: number; iconName: string }) => Promise<void>;
   onDeleteCustomService: (id: string) => Promise<void>;
+  driveConfigured: boolean;
+  driveConnected: boolean;
+  driveBusy: boolean;
+  driveUpdatedAt: string | null;
+  driveError: string | null;
+  driveBackup: AppDataEnvelope | null;
+  onConnectDrive: () => Promise<void>;
+  onDisconnectDrive: () => Promise<void>;
+  onSaveDriveBackup: () => Promise<void>;
+  onRefreshDrive: () => Promise<void>;
+  onRestoreDriveBackup: () => Promise<void>;
 }
 
 export const CURRENCY_OPTIONS = [
@@ -139,6 +152,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateSettings,
   onAddCustomService,
   onDeleteCustomService,
+  driveConfigured, driveConnected, driveBusy, driveUpdatedAt, driveError, driveBackup,
+  onConnectDrive, onDisconnectDrive, onSaveDriveBackup, onRefreshDrive, onRestoreDriveBackup,
 }) => {
   // Service Form state
   const [serviceName, setServiceName] = useState('');
@@ -210,6 +225,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
         </div>
       </div>
+
+      <section aria-labelledby="drive-backup-title" className="bg-zinc-900 border border-blue-500/30 rounded-2xl p-5 shadow-md space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-xl bg-blue-500/15 text-blue-300 border border-blue-500/30"><Cloud className="w-5 h-5" /></div>
+          <div className="flex-1">
+            <h3 id="drive-backup-title" className="font-bold text-white">Respaldo seguro en Google Drive</h3>
+            <p className="text-xs text-zinc-300 mt-1">Opcional y manual. Solo guarda moneda, tema y definiciones de servicios personalizados. No incluye cuentas, ventas, contactos, contraseñas, PIN, plantillas ni tokens. No modifica tu almacenamiento actual.</p>
+            <p className="text-[11px] text-zinc-500 mt-1">Google recibe permiso limitado a los archivos privados de esta app (appDataFolder). El token queda solo en memoria y se vuelve a pedir al recargar.</p>
+          </div>
+        </div>
+        {!driveConfigured && <p role="status" className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">Función desactivada: falta configurar <code>VITE_GOOGLE_CLIENT_ID</code> con el ID público de un cliente OAuth de tipo Web en Google Cloud. No se inventó ningún ID.</p>}
+        {driveError && <p role="alert" className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-3">{driveError}</p>}
+        {driveConnected && <p role="status" className="text-xs text-emerald-300">Google Drive conectado en esta sesión. {driveBackup ? `Hay una copia disponible (${new Date(driveBackup.updatedAt).toLocaleString()}).` : 'Todavía no se encontró una copia.'} {driveUpdatedAt && `Última operación: ${driveUpdatedAt}.`}</p>}
+        <div className="flex flex-wrap gap-2">
+          {!driveConnected ? <button type="button" disabled={!driveConfigured || driveBusy} onClick={() => void onConnectDrive()} className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold">Conectar Google Drive</button> : <>
+            <button type="button" disabled={driveBusy} onClick={() => void onSaveDriveBackup()} className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5"><CloudUpload className="w-4 h-4" />Guardar respaldo</button>
+            <button type="button" disabled={driveBusy} onClick={() => void onRefreshDrive()} className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5"><RefreshCw className="w-4 h-4" />Actualizar</button>
+            {driveBackup && <button type="button" disabled={driveBusy} onClick={() => void onRestoreDriveBackup()} className="px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-1.5"><CloudDownload className="w-4 h-4" />Restaurar configuración</button>}
+            <button type="button" disabled={driveBusy} onClick={() => void onDisconnectDrive()} className="px-3 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800 disabled:opacity-50 text-zinc-300 text-xs font-bold inline-flex items-center gap-1.5"><Unplug className="w-4 h-4" />Desconectar</button>
+          </>}
+        </div>
+        {driveBackup && <p className="text-[11px] text-zinc-400">Restaurar aplica la moneda/tema y agrega servicios que todavía no estén por nombre; no borra datos locales ni reemplaza servicios existentes. Si Drive cambió desde tu última lectura, la escritura se bloquea para evitar sobrescribir otra copia.</p>}
+      </section>
 
       {/* Grid of Settings Sections */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

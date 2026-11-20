@@ -1,25 +1,29 @@
-# Stream Flow Pro per-user Google Drive app data
+# Optional Google Drive settings backup (web SPA)
 
-Status: runtime Drive adapter and mocked API tests are implemented on `feature/google-drive-appdata`. The current app UI/storage CRUD path is not yet wired to this adapter; do not enable it for end users until that integration and OAuth code exchange are added. Existing sign-in and persistence remain unchanged.
+Status: a manual, opt-in UI flow is wired on `feature/google-drive-appdata`. Existing login, API CRUD, and local-storage behavior remain the active storage path. Google Drive is not a replacement backend and no Drive call occurs until the signed-in user explicitly connects and approves Google consent.
 
-## Android interoperability contract (schema v1)
+## Exactly what is backed up
 
-Both clients must use Drive's private `appDataFolder`, filename `stream-flow-pro-data-v1.json`, and this JSON envelope:
+The versioned file `stream-flow-pro-safe-settings-v1.json` is private to the consenting Google account's Drive `appDataFolder`. Schema v1 contains only:
 
-```json
-{
-  "schemaVersion": 1,
-  "app": "stream-flow-pro",
-  "updatedAt": "ISO-8601 UTC timestamp",
-  "writerId": "random per-install identifier",
-  "data": { "providers": [], "accounts": [], "customers": [], "sales": [], "templates": [], "settings": {}, "customServices": [] }
-}
-```
+- the Stream app-account ID used to prevent restoring the wrong Stream account;
+- settings `currency`, `currencySymbol`, and `theme`;
+- custom-service definitions containing only `name`, `color`, `badgeBg`, `textColor`, `iconName`, and `defaultProfiles`.
 
-Google Drive file metadata's monotonically increasing `version` is the revision. Before writing, compare the loaded revision with current Drive metadata; if different, refuse overwrite and require a reload/export decision. Drive appData is not transactional and concurrent changes can still race between metadata check and upload; clients must explain this limitation and never claim database-grade conflict safety. Only the listed non-secret business fields are candidates for cross-device sync. Exclude all users/authentication/passwords, account passwords, account master PINs, profile PINs, sale credentials/PINs, subscription tokens, and audit logs. Until a reviewed client-side encryption design exists, those sensitive fields remain local-only. Do not send them in plaintext.
+The writer constructs a fresh payload from this allowlist. It does **not** include user records, passwords, account credentials, account/profile PINs, account/sale/customer/provider records or contacts, sale history, message templates, subscription tokens, audit logs, or arbitrary fields. Restoring applies the allowlisted preferences and adds custom services that do not already exist by name; it does not delete/replace existing local records or services. This is a settings backup, not a complete business-data backup. Existing JSON backup/export remains separate.
 
-## Required external configuration before OAuth can work
+Access tokens are held in memory only, are cleared at expiry/logout/account change, and are not written to localStorage, URLs, server APIs, or the backup. The app does not request OpenID/email scopes and does not claim to know which Google account was selected. User-initiated writes compare Drive file `version` with the version last read and refuse a stale overwrite. Drive metadata-check/upload is not transactional, so a narrow concurrent race remains possible. Refresh the Drive status before deciding to save or restore after a conflict.
 
-Create a Google Cloud OAuth 2.0 Web application client in the owner's project; enable Google Drive API; configure consent screen/audience and exact authorized web origins; add test users while in testing and complete Google verification if needed for public distribution. The only requested Drive scope is `https://www.googleapis.com/auth/drive.appdata`. Use a public OAuth client ID in runtime config (`VITE_GOOGLE_CLIENT_ID`); any code-exchange secret, if server-side code flow is adopted, must remain server-only. Never use an implicit token in a URL, service account, or an assistant's OAuth account. No client ID or secret is included or fabricated here.
+## Configure Google Cloud (required to enable OAuth)
 
-The current integration is deliberately not activated because the existing app's auth and all CRUD/storage functions route through a file-backed server or shared browser-local fallback. A UI toggle alone would be unsafe: credentials are present in existing records, and switching providers without routing every read/write would silently continue writing server data. Adapter tests use mocked Drive responses; no live user account/data was accessed.
+1. In the app owner's Google Cloud project, enable **Google Drive API**.
+2. Create an OAuth 2.0 client with application type **Web application**. The app uses Google Identity Services token client in the browser (no client secret and no server-side code exchange).
+3. Add the exact deployed web origins under **Authorized JavaScript origins** (scheme + hostname + optional port; no path), plus the local development origin if needed. Make sure each origin used by users is present.
+4. Configure the OAuth consent screen with the correct app name, support/developer contact, audience, and privacy-policy/homepage details Google requires. While the app is in Testing, add each intended tester as a test user. Before public distribution, complete Google's applicable verification/review for the Drive scope and the published app; testing-user status is not public consent.
+5. Set the public **OAuth Web client ID** as runtime/build variable `VITE_GOOGLE_CLIENT_ID` in the hosting environment and rebuild. This value is an identifier, not a secret. The app shows an explicit setup error and leaves Drive disabled if it is missing. Never commit a made-up ID or put a client secret, refresh token, access token, API key, or service-account key in frontend config.
+
+The only Drive scope requested is `https://www.googleapis.com/auth/drive.appdata`, with explicit consent and account selection. Google Drive `appDataFolder` use requires no Cloud Billing enablement. The owner must verify Google Cloud OAuth configuration and deployed origins; no OAuth client ID is present in this repository, and no real consent/account/API test has been performed.
+
+## Validation and deployment boundary
+
+The automated adapter/OAuth tests use mocked GIS and Drive APIs. They do not use production accounts or inspect/migrate records. Build and type-check from the repo using `npm run lint` and `npm run build`; run mocked tests with `npm run test:drive`. Do not merge/deploy the feature without owner review, setting the actual runtime client ID/origins, and completing the intended test-user/public-consent checks.

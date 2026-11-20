@@ -12,7 +12,7 @@
     "cap:init": "cap init GestorStreaming com.streamcontrol.gestor --web-dir dist",
     "cap:add": "cap add android",
     "cap:sync": "cap sync android",
-    "test:drive": "tsx --test src/lib/googleDriveStorage.test.ts"
+    "test:drive": "tsx --test src/lib/googleDriveAuth.test.ts src/lib/googleDriveStorage.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.1",
