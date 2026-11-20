@@ -22,12 +22,11 @@ export const TokensView: React.FC<TokensViewProps> = ({
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [freshTokens, setFreshTokens] = useState<SubscriptionToken[]>([]);
+  const [generationError, setGenerationError] = useState('');
 
-  // Hidden Admin Panel State
-  const [isUnlocked, setIsUnlocked] = useState(user?.isAdmin || user?.email === 'admin@streaming.com');
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
+  // Administrator access is granted only by the authenticated server role.
+  const isUnlocked = user?.isAdmin === true;
 
   // Admin Token Gen
   const [genCount, setGenCount] = useState<number>(1);
@@ -55,27 +54,19 @@ export const TokensView: React.FC<TokensViewProps> = ({
     }
   };
 
-  const handleUnlockSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPin = pinInput.trim().toUpperCase();
-    if (cleanPin === 'ADMIN2026' || cleanPin === '1234' || cleanPin === 'SUPERADMIN') {
-      setIsUnlocked(true);
-      setShowPinModal(false);
-      setPinInput('');
-      setPinError('');
-    } else {
-      setPinError('Clave secreta incorrecta.');
-    }
-  };
-
   const handleGenerate = async () => {
-    setGenLoading(true);
-    await onGenerateTokens(genCount, genDays);
-    setGenLoading(false);
+    setGenLoading(true); setGenerationError(''); setFreshTokens([]);
+    try {
+      const generated = await onGenerateTokens(genCount, genDays);
+      setFreshTokens(generated);
+      if (!generated.length) setGenerationError('No se recibieron códigos. Volvé a intentarlo.');
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : 'No se pudieron generar los tokens.');
+    } finally { setGenLoading(false); }
   };
 
-  const copyToClipboard = (code: string, id: string) => {
-    navigator.clipboard.writeText(code);
+  const copyToClipboard = async (code: string, id: string) => {
+    try { await navigator.clipboard.writeText(code); } catch { setGenerationError('No se pudo copiar al portapapeles. Seleccioná el código y copialo manualmente.'); return; }
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -93,30 +84,7 @@ export const TokensView: React.FC<TokensViewProps> = ({
           </p>
         </div>
 
-        {/* Hidden Unlock Trigger Button */}
-        <div>
-          {!isUnlocked ? (
-            <button
-              onClick={() => {
-                setShowPinModal(true);
-                setPinError('');
-              }}
-              className="px-3 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 border border-zinc-800 text-xs font-medium transition flex items-center gap-1.5"
-              title="Acceso Super Admin"
-            >
-              <Lock className="w-3.5 h-3.5 text-zinc-500" />
-              <span>Modo Administrador</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsUnlocked(false)}
-              className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold hover:bg-emerald-500/20 transition flex items-center gap-1.5"
-            >
-              <Unlock className="w-3.5 h-3.5" />
-              <span>Admin Desbloqueado (Bloquear)</span>
-            </button>
-          )}
-        </div>
+        {isUnlocked && <span className="text-xs text-emerald-300">Administrador verificado</span>}
       </div>
 
       {/* Subscription Status & Redeem Form */}
@@ -236,60 +204,6 @@ export const TokensView: React.FC<TokensViewProps> = ({
         </div>
       </div>
 
-      {/* Secret PIN Modal */}
-      {showPinModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                <Lock className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-bold text-base text-white">Desbloqueo de Panel Secreto</h3>
-                <p className="text-xs text-zinc-400">Ingresa la clave maestra para activar el Generador de Tokens.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleUnlockSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">Clave Secreta de Administrador</label>
-                <input
-                  type="password"
-                  required
-                  autoFocus
-                  placeholder="••••••••"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-mono text-center font-bold text-lg focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {pinError && (
-                <div className="p-2.5 rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-semibold text-center">
-                  {pinError}
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPinModal(false)}
-                  className="w-1/2 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold text-xs transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-lg shadow-indigo-600/20"
-                >
-                  Desbloquear
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Admin Token Generator Panel (Only visible when unlocked) */}
       {isUnlocked && (
         <div className="bg-zinc-900/80 border border-indigo-500/30 rounded-2xl p-6 space-y-4 shadow-xl">
@@ -326,6 +240,9 @@ export const TokensView: React.FC<TokensViewProps> = ({
             </div>
           </div>
 
+          {generationError && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{generationError}</div>}
+          {freshTokens.length > 0 && <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Copiá y guardá estos códigos ahora: por seguridad no se almacenan y no se podrán volver a ver al salir de esta pantalla.
+            <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(freshTokens.map(t => t.code).join('\n')); setGenerationError('Códigos copiados. Guardalos en un lugar seguro.'); } catch { setGenerationError('No se pudo copiar. Copiá los códigos manualmente antes de salir.'); } }} className="ml-2 underline">Copiar todos</button></div>}
           {/* Tokens List Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-zinc-300">
@@ -339,9 +256,9 @@ export const TokensView: React.FC<TokensViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {tokens.map((tok) => (
+                {[...freshTokens, ...tokens.filter((tok) => !freshTokens.some((fresh) => fresh.id === tok.id))].map((tok) => (
                   <tr key={tok.id} className="hover:bg-zinc-800/40 transition">
-                    <td className="py-2.5 px-4 font-mono font-bold text-white tracking-wider">{tok.code}</td>
+                    <td className="py-2.5 px-4 font-mono font-bold text-white tracking-wider">{tok.code || 'Código mostrado únicamente al generarlo'}</td>
                     <td className="py-2.5 px-4 text-zinc-300 font-semibold">{tok.days || 30} Días</td>
                     <td className="py-2.5 px-4">
                       <span
@@ -357,9 +274,9 @@ export const TokensView: React.FC<TokensViewProps> = ({
                     <td className="py-2.5 px-4 text-zinc-400 font-mono text-[11px]">{tok.usedByEmail || '-'}</td>
                     <td className="py-2.5 px-4 text-right">
                       <button
-                        onClick={() => copyToClipboard(tok.code, tok.id)}
+                        onClick={() => copyToClipboard(tok.code, tok.id)} disabled={!tok.code}
                         className="p-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 transition"
-                        title="Copiar código"
+                        title={tok.code ? "Copiar código" : "El código no se vuelve a mostrar"}
                       >
                         {copiedId === tok.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>

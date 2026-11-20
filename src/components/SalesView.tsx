@@ -35,7 +35,7 @@ interface SalesViewProps {
   customers: Customer[];
   customServices?: CustomService[];
   currency?: string;
-  onSaveSale: (sale: Partial<Sale>) => void;
+  onSaveSale: (sale: Partial<Sale>) => Promise<void>;
   onRenewSale: (saleId: string) => void;
   onDeleteSale: (id: string) => void;
   defaultTemplateBody?: string;
@@ -59,6 +59,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Form State
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -80,6 +82,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   const handleOpenNewModal = () => {
+    setSaveError(null);
     setEditingSale(null);
     setSelectedAccountId('');
     setSelectedProfileId('');
@@ -95,6 +98,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   const handleOpenEditModal = (sale: Sale) => {
+    setSaveError(null);
     setEditingSale(sale);
     setSelectedAccountId(sale.accountId);
     setSelectedProfileId(sale.profileId || '');
@@ -142,7 +146,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const selectedAcc = accounts.find((a) => a.id === selectedAccountId);
@@ -177,8 +181,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
       paymentMethod: formPaymentMethod,
     };
 
-    onSaveSale(payload);
-    setModalOpen(false);
+    setSaveLoading(true); setSaveError(null);
+    try { await onSaveSale(payload); setModalOpen(false); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo guardar la venta. Revisá el inventario e intentá de nuevo.'); }
+    finally { setSaveLoading(false); }
   };
 
   // Available stock accounts for dropdown
@@ -635,6 +641,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 </div>
               </div>
 
+              {saveError && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{saveError}</div>}
               {/* Submit Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
                 <button
@@ -646,9 +653,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 </button>
                 <button
                   type="submit"
+                  disabled={saveLoading}
                   className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-600/20"
                 >
-                  Guardar Venta / Renta
+                  {saveLoading ? 'Guardando…' : 'Guardar Venta / Renta'}
                 </button>
               </div>
             </form>

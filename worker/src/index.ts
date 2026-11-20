@@ -165,6 +165,7 @@ export class StreamFlowStore {
       // Never return database, password, token, or stack details to callers.
       const message = error instanceof Error ? error.message : '';
       if (message === 'bad JSON' || message === 'request too large') return json({error:'Solicitud inválida o demasiado grande.'},400,options.origin);
+      const saleStatus=(error as any)?.saleStatus; if(saleStatus)return json({error:message},saleStatus,options.origin);
       return json({ error: 'No se pudo completar la solicitud. Intentá de nuevo.' }, 500, options.origin);
     }
   }
@@ -286,19 +287,91 @@ export class StreamFlowStore {
   }
   private async collection(request: Request, user: User, kind: string, id: string|undefined, origin: string, renew=false) {
     if (!ALLOWED_KINDS.has(kind) && kind!=='customServices') return json({error:'Ruta no encontrada.'},404,origin);
+    const findItem=(k:string,itemId:string)=>this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=? AND id=?',user.id,k,itemId).toArray()[0] as any;
+    const release=(sale:any)=>{
+      if (!sale?.accountId) return;
+      const row=findItem('accounts',String(sale.accountId)); if(!row)return;
+      const account=JSON.parse(row.body);
+      if(sale.type==='full_account') {
+        const other=this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=?',user.id,'sales').toArray().some((r:any)=>{const x=JSON.parse(r.body);return x.id!==sale.id&&x.accountId===sale.accountId&&x.type==='full_account'});
+        if(!other) account.isFullAccountSold=false;
+      }
+      if(sale.profileId && Array.isArray(account.profiles)) {
+        const profile=account.profiles.find((p:any)=>p.id===sale.profileId);
+        if(profile){
+          const linkedElsewhere=this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=?',user.id,'sales').toArray().some((r:any)=>{const x=JSON.parse(r.body);return x.id!==sale.id&&x.accountId===sale.accountId&&x.profileId===sale.profileId&&x.status!=='cancelled'});
+          if(profile.currentSaleId===sale.id || (profile.status==='sold'&&!profile.currentSaleId&&!linkedElsewhere)){profile.status='available';delete profile.currentSaleId;}
+        }
+      }
+      this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(account),user.id,'accounts',account.id);
+    };
+    const reserve=(sale:any, excludeId?:string)=>{
+      if(!sale.accountId)return null; // Older/imported unlinked sales remain supported.
+      const row=findItem('accounts',String(sale.accountId)); if(!row)return {status:404,error:'No se encontró la cuenta del inventario.'};
+      const account=JSON.parse(row.body);
+      if(sale.type==='full_account') {
+        if(account.isFullAccountSold && excludeId===undefined)return {status:409,error:'La cuenta completa ya está vendida.'};
+        if(!account.isFullAccount)return {status:400,error:'El inventario seleccionado no es una cuenta completa.'};
+        const active=this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=?',user.id,'sales').toArray().some((r:any)=>{const x=JSON.parse(r.body);return x.id!==excludeId&&x.accountId===sale.accountId&&x.type==='full_account'});
+        if(active)return {status:409,error:'La cuenta completa ya está asignada a otra venta.'};
+        account.isFullAccountSold=true;
+      } else {
+        if(account.isFullAccount)return {status:400,error:'La cuenta completa no se puede vender como perfil.'};
+        if(!sale.profileId)return {status:400,error:'Seleccioná un perfil para esta venta.'};
+        const profile=Array.isArray(account.profiles)?account.profiles.find((p:any)=>p.id===sale.profileId):null;
+        if(!profile)return {status:404,error:'No se encontró el perfil en esa cuenta.'};
+        if(profile.status!=='available' && profile.currentSaleId!==excludeId)return {status:409,error:'Ese perfil ya no está disponible. Actualizá el inventario.'};
+        profile.status='sold'; profile.currentSaleId=sale.id;
+        if(sale.profileName)profile.profileName=sale.profileName;
+      }
+      this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(account),user.id,'accounts',account.id);
+      return null;
+    };
+    const ensureCustomer=(sale:any)=>{
+      const phone=String(sale.customerPhone||'').trim(), name=String(sale.customerName||'').trim();
+      if(!name || !phone)return sale;
+      const customers=this.sql.exec('SELECT id,body FROM items WHERE user_id=? AND kind=?',user.id,'customers').toArray() as any[];
+      let existing=customers.find(r=>String(JSON.parse(r.body).phone||'').trim()===phone);
+      if(!existing){const customer={id:`cust_${crypto.randomUUID()}`,userId:user.id,name,phone,createdAt:new Date().toISOString()};this.sql.exec('INSERT INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,'customers',customer.id,JSON.stringify(customer));existing={id:customer.id,body:JSON.stringify(customer)};}
+      sale.customerId=existing.id;
+      return sale;
+    };
     if(request.method==='POST' && !id) {
-      const b=await this.body(request); const item={...b,id:`${kind.slice(0,4)}_${crypto.randomUUID()}`,userId:user.id,createdAt:new Date().toISOString()};
-      if(kind==='customServices') item.id=`cs_${crypto.randomUUID()}`;
-      this.sql.exec('INSERT INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,kind,item.id,JSON.stringify(item));
+      const b=await this.body(request); const now=new Date().toISOString();
+      const item:any={...b,id:`${kind.slice(0,4)}_${crypto.randomUUID()}`,userId:user.id,createdAt:now};
+      if(kind==='customServices')item.id=`cs_${crypto.randomUUID()}`;
+      if(kind==='sales'){
+        if(!item.accountId || !['profile','full_account'].includes(item.type))return json({error:'Seleccioná una cuenta y un tipo de venta válido.'},400,origin);
+        if(!String(item.customerName||'').trim())return json({error:'Ingresá el nombre del cliente.'},400,origin);
+        if(!Number.isFinite(Number(item.salePrice))||Number(item.salePrice)<0)return json({error:'El precio de venta no es válido.'},400,origin);
+        item.customerName=String(item.customerName).trim(); item.customerPhone=String(item.customerPhone||'').trim();
+        const failure=this.ctx.storage.transactionSync(()=>{const err=reserve(item);if(err)return err;ensureCustomer(item);this.sql.exec('INSERT INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,kind,item.id,JSON.stringify(item));return null;});
+        if(failure)return json({error:failure.error},failure.status,origin);
+      } else this.sql.exec('INSERT INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,kind,item.id,JSON.stringify(item));
       return json(item,201,origin);
     }
-    if(!id) return json({error:'Identificador requerido.'},400,origin);
-    const row=this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,id).toArray()[0] as any;
-    if(request.method==='DELETE') { this.sql.exec('DELETE FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,id); return json({success:true},200,origin); }
-    if(!row) return json({error:'No se encontró el registro.'},404,origin);
+    if(!id)return json({error:'Identificador requerido.'},400,origin);
+    const row=findItem(kind,id);
+    if(request.method==='DELETE') {
+      if(kind==='sales'&&row){const item=JSON.parse(row.body);this.ctx.storage.transactionSync(()=>{release(item);this.sql.exec('DELETE FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,id);});}
+      else this.sql.exec('DELETE FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,id);
+      return json({success:true},200,origin);
+    }
+    if(!row)return json({error:'No se encontró el registro.'},404,origin);
     const item=JSON.parse(row.body);
     if(renew && request.method==='POST') { const b=await this.body(request), days=Math.min(3650,Math.max(1,Number(b.days)||30)), oldEnd=Date.parse(item.endDate||''), base=Math.max(Number.isFinite(oldEnd)?oldEnd:0,Date.now()), end=new Date(base); end.setUTCDate(end.getUTCDate()+days); item.startDate=new Date(base).toISOString(); item.endDate=end.toISOString(); item.status='active'; item.paymentStatus='paid'; if(b.paymentMethod)item.paymentMethod=String(b.paymentMethod).slice(0,80); item.lastRenewalDate=new Date().toISOString(); this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(item),user.id,kind,id); return json({success:true,sale:item},200,origin); }
-    if(request.method==='PUT') { const b=await this.body(request); const updated={...item,...b,id:item.id,userId:user.id}; this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id); return json(updated,200,origin); }
+    if(request.method==='PUT') {
+      const b=await this.body(request); const updated:any={...item,...b,id:item.id,userId:user.id};
+      if(kind==='sales'){
+        if(!updated.accountId || !['profile','full_account'].includes(updated.type))return json({error:'Seleccioná una cuenta y un tipo de venta válido.'},400,origin);
+        if(!String(updated.customerName||'').trim())return json({error:'Ingresá el nombre del cliente.'},400,origin);
+        if(!Number.isFinite(Number(updated.salePrice))||Number(updated.salePrice)<0)return json({error:'El precio de venta no es válido.'},400,origin);
+        updated.customerName=String(updated.customerName).trim();updated.customerPhone=String(updated.customerPhone||'').trim();
+        const failure=this.ctx.storage.transactionSync(()=>{release(item);const err=reserve(updated,item.id);if(err)throw Object.assign(new Error(err.error),{saleStatus:err.status});ensureCustomer(updated);this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id);return null;});
+        return json(updated,200,origin);
+      }
+      this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id); return json(updated,200,origin);
+    }
     return json({error:'Método no permitido.'},405,origin);
   }
   private exportData(user: User, origin: string) {

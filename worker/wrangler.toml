@@ -4,7 +4,7 @@ compatibility_date = "2026-05-03"
 workers_dev = true
 
 [vars]
-APP_ORIGIN = "https://florenciaamor36-ship-it.github.io"
+APP_ORIGIN = "https://ui-preview.stream-flow-ui-preview-20261120.pages.dev"
 
 [[durable_objects.bindings]]
 name = "STORE"

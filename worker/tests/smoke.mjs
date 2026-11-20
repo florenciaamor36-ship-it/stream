@@ -1,5 +1,5 @@
 const base = process.env.STREAM_API_URL || 'http://127.0.0.1:8787';
-const origin = 'https://florenciaamor36-ship-it.github.io';
+const origin = 'https://ui-preview.stream-flow-ui-preview-20261120.pages.dev';
 const adminEmail = 'stream-smoke-admin@example.test';
 const userEmail = `stream-smoke-${Date.now()}@example.test`;
 const password = 'Synthetic-Only-Password-2026!';
@@ -52,7 +52,6 @@ for (const [kind, idPrefix, payload] of [
   ['providers', 'prov_', { name: 'Synthetic Provider', email: 'fake@example.test' }],
   ['accounts', 'acco_', { service: 'Synthetic Service', email: 'fake@example.test' }],
   ['customers', 'cust_', { name: 'Synthetic Customer', phone: '0000000000' }],
-  ['sales', 'sale_', { customerName: 'Synthetic Customer', customerPhone: '0000000000', endDate: new Date(Date.now()+86400000).toISOString() }],
   ['templates', 'temp_', { name: 'Synthetic Template', body: 'synthetic only' }],
 ]) {
   const created = await call(`/api/${kind}`, { method: 'POST', token: loggedIn.token, body: payload, expect: 201 });
@@ -73,6 +72,36 @@ for (const [kind, idPrefix, payload] of [
   if (kind !== 'sales') await call(`/api/${kind}/${item.id}`, { method: 'DELETE', token: loggedIn.token });
   else await call(`/api/sales/${item.id}`, { method: 'DELETE', token: loggedIn.token });
 }
+// Sales reserve stock atomically, reject duplicate allocation, create/link customers, and release stock on deletion.
+const stock = (await call('/api/accounts', { method: 'POST', token: loggedIn.token, body: { platform: 'Synthetic', accountEmail: 'stock@example.test', accountPassword: 'synthetic', isFullAccount: false, isFullAccountSold: false, profiles: [{ id: 'profile-1', profileName: 'Profile 1', status: 'available' }, { id: 'profile-2', profileName: 'Profile 2', status: 'available' }] }, expect: 201 })).data;
+const makeSale = (name, phone) => ({ accountId: stock.id, type: 'profile', profileId: 'profile-1', profileName: 'Profile 1', customerName: name, customerPhone: phone, salePrice: 5, costPrice: 2 });
+const firstSale = await call('/api/sales', { method: 'POST', token: loggedIn.token, body: makeSale('Synthetic buyer', '5550001'), expect: 201 });
+assert(firstSale.data.customerId && firstSale.data.userId === loggedIn.user.id, 'sale customer was not linked/owned');
+// Item details are returned through /api/data.
+let inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
+assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'sold', 'profile not marked occupied after sale');
+await call('/api/sales', { method: 'POST', token: loggedIn.token, body: makeSale('Another buyer', '5550002'), expect: 409 });
+await call(`/api/sales/${firstSale.data.id}`, { method: 'PUT', token: loggedIn.token, body: { ...firstSale.data, profileId: 'profile-2', profileName: 'Profile 2' } });
+inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
+assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'available' && inventoryState.accounts.find((x) => x.id === stock.id).profiles[1].currentSaleId === firstSale.data.id, 'sale reassignment did not transfer reservation');
+await call(`/api/sales/${firstSale.data.id}`, { method: 'PUT', token: loggedIn.token, body: { ...firstSale.data, profileId: 'profile-1', profileName: 'Profile 1' } });
+inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
+assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].currentSaleId === firstSale.data.id && inventoryState.accounts.find((x) => x.id === stock.id).profiles[1].status === 'available', 'sale reverse reassignment failed');
+await call(`/api/sales/${firstSale.data.id}`, { method: 'DELETE', token: loggedIn.token });
+inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
+assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'available', 'profile not released on sale deletion');
+const attemptConcurrentSale = async (payload) => {
+  const response = await fetch(`${base}/api/sales`, { method: 'POST', headers: { Origin: origin, Authorization: `Bearer ${loggedIn.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  return { response, data: await response.json() };
+};
+const contenders = await Promise.all([
+  attemptConcurrentSale(makeSale('Buyer A', '5550003')),
+  attemptConcurrentSale(makeSale('Buyer B', '5550004')),
+]);
+assert(contenders.filter((x) => x.response.status === 201).length === 1 && contenders.filter((x) => x.response.status === 409).length === 1, 'concurrent sales allowed double allocation');
+const createdCustomer = (await call('/api/data', { token: loggedIn.token })).data.customers.find((x) => x.phone === '5550003' || x.phone === '5550004');
+assert(createdCustomer, 'sale did not auto-create customer');
+
 const custom = await call('/api/custom-services', { method: 'POST', token: loggedIn.token, body: { name: 'Synthetic Custom', userId: 'forged-owner' }, expect: 201 });
 assert(custom.data.userId === loggedIn.user.id, 'custom-service owner not enforced');
 await call('/api/custom-services', { method: 'DELETE', token: loggedIn.token, expect: 400 });
@@ -97,4 +126,4 @@ assert(Array.isArray(logs) && logs.some((x) => x.status === 'SUCCESS'), 'token a
 // Session revocation is enforced server-side.
 await call('/api/auth/logout', { method: 'POST', token: loggedIn.token });
 await call('/api/data', { token: loggedIn.token, expect: 401 });
-console.log('Stream Flow synthetic Worker smoke passed: auth, token, owner isolation, CRUD, backup, CORS, logout and persistence.');
+console.log('Stream Flow synthetic Worker smoke passed: auth, token, owner isolation, transactional sales, backup, CORS, logout and persistence.');
