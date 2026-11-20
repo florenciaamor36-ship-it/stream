@@ -1,5 +1,6 @@
 export interface Env {
   STORE: DurableObjectNamespace;
+  STORE_KEY?: string;
   APP_ORIGIN?: string;
   ADMIN_EMAIL?: string;
   BOOTSTRAP_ADMIN_SECRET?: string;
@@ -75,7 +76,7 @@ export default {
     if (request.method === 'OPTIONS') return json({}, 204, origin);
     const url = new URL(request.url);
     if (url.pathname === '/health') return json({ ok: true, backend: 'stream-flow-api-preview' }, 200, origin);
-    const id = env.STORE.idFromName('stream-flow-preview-smoke-2');
+    const id = env.STORE.idFromName(env.STORE_KEY || 'stream-flow-preview-smoke-2');
     const stub = env.STORE.get(id);
     // Durable Object fetch has no RPC-style second argument; pass trusted metadata only on the internal request.
     const forwarded = new Request(request);

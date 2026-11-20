@@ -5,6 +5,7 @@ workers_dev = true
 
 [vars]
 APP_ORIGIN = "https://ui-preview.stream-flow-ui-preview-20261120.pages.dev"
+STORE_KEY = "stream-flow-clean-relogin-20261120"
 
 [[durable_objects.bindings]]
 name = "STORE"
