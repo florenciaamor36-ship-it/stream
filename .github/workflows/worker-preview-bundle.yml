@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: '20'
       - name: Bundle isolated Worker without deploying
-        run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml --outdir .worker-bundle
+        run: npx --yes esbuild@0.25.0 worker/src/index.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=.worker-bundle/index.js
       - uses: actions/upload-artifact@v4
         with:
           name: stream-flow-worker-preview-bundle
