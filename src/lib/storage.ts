@@ -30,22 +30,12 @@ function saveSessionFromAuth(data: any) {
   return data;
 }
 
-// Helper for offline DB fallback when hosted on static platforms like GitHub Pages
-function getOfflineDb() {
-  if (apiRemoteConfigured) throw new Error('El servidor seguro no está disponible; no se guardaron cambios localmente.');
-  const raw = localStorage.getItem('stream_control_offline_db');
-  if (raw) {
-    try { return JSON.parse(raw); } catch { /* rebuild an empty local store */ }
-  }
-  const emptyDb = { users: [], providers: [], accounts: [], customers: [], sales: [], templates: [], tokens: [],
-    settings: { currency: 'USD', currencySymbol: '$', theme: 'theme-dark-red' }, customServices: [] };
-  localStorage.setItem('stream_control_offline_db', JSON.stringify(emptyDb));
-  return emptyDb;
+// There is no browser database, hard-coded user, or client-side subscription fallback in this branch.
+function getOfflineDb(): never {
+  throw new Error('El servidor seguro no está disponible; no se guardaron cambios localmente.');
 }
-
-function saveOfflineDb(db: any) {
-  if (apiRemoteConfigured) return;
-  localStorage.setItem('stream_control_offline_db', JSON.stringify(db));
+function saveOfflineDb(_db: any) {
+  // Intentionally a no-op: successful server data must never be copied to localStorage.
 }
 
 export async function apiLogin(email: string, password?: string): Promise<{ success: boolean; user?: User; error?: string }> {
@@ -63,48 +53,12 @@ export async function apiLogin(email: string, password?: string): Promise<{ succ
     }
   } catch (err: any) {
     if (err.message && !err.message.includes('Unexpected token')) {
-      console.warn('API login error, falling back to local database:', err.message);
+      console.warn('Secure API login request failed:', err.message);
     if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
     }
   }
 
-  // Fallback for static hosting (GitHub Pages)
-  const cleanEmail = (email || '').toLowerCase().trim();
-  const db = getOfflineDb();
-  let user = db.users.find((u: any) => u.email.toLowerCase() === cleanEmail);
-
-  if (cleanEmail === 'florenciaamor36@gmail.com') {
-    if (!user) {
-      user = {
-        id: 'user_admin_01',
-        email: 'florenciaamor36@gmail.com',
-        password: password || 'Selexionar1',
-        name: 'Florencia Amor (Admin)',
-        createdAt: new Date().toISOString(),
-        subscriptionUntil: '2030-01-01T00:00:00.000Z',
-        tokensRedeemed: 99,
-        isAdmin: true,
-        hasAcceptedTerms: true,
-      };
-      db.users.push(user);
-      saveOfflineDb(db);
-    } else {
-      user.isAdmin = true;
-      user.password = password || user.password;
-      saveOfflineDb(db);
-    }
-    return { success: true, user };
-  }
-
-  if (!user) {
-    return { success: false, error: 'El correo electrónico no se encuentra registrado.' };
-  }
-
-  if (password && user.password && user.password !== password) {
-    return { success: false, error: 'Contraseña incorrecta.' };
-  }
-
-  return { success: true, user };
+  return { success: false, error: 'El inicio de sesión requiere el servidor seguro.' };
 }
 
 export async function apiRegister(email: string, password?: string, name?: string): Promise<{ success: boolean; user?: User; error?: string }> {
@@ -121,38 +75,11 @@ export async function apiRegister(email: string, password?: string, name?: strin
       return data;
     }
   } catch (err: any) {
-    console.warn('API register error, falling back to local DB:', err);
+    console.warn('Secure API registration request failed:', err);
     if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
   }
 
-  // Fallback for static host
-  const cleanEmail = (email || '').toLowerCase().trim();
-  const db = getOfflineDb();
-
-  if (db.users.some((u: any) => u.email.toLowerCase() === cleanEmail)) {
-    return { success: false, error: 'Este correo electrónico ya está registrado.' };
-  }
-
-  const now = new Date();
-  const subDate = new Date();
-  subDate.setDate(now.getDate() + 30);
-
-  const newUser: User = {
-    id: 'user_' + Date.now(),
-    email: cleanEmail,
-    password: password || '',
-    name: name || cleanEmail.split('@')[0],
-    createdAt: now.toISOString(),
-    gracePeriodUntil: subDate.toISOString(),
-    subscriptionUntil: subDate.toISOString(),
-    tokensRedeemed: 0,
-    isAdmin: cleanEmail === 'florenciaamor36@gmail.com',
-    hasAcceptedTerms: false,
-  };
-
-  db.users.push(newUser);
-  saveOfflineDb(db);
-  return { success: true, user: newUser };
+  return { success: false, error: 'El registro requiere el servidor seguro.' };
 }
 
 export async function apiRedeemToken(userId: string, tokenCode: string): Promise<{ success: boolean; message?: string; user?: User; error?: string }> {
@@ -169,23 +96,11 @@ export async function apiRedeemToken(userId: string, tokenCode: string): Promise
       return data;
     }
   } catch (err: any) {
-    console.warn('API redeem token fallback:', err);
+    console.warn('Secure API token redemption failed:', err);
     if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
   }
 
-  // Local fallback
-  const db = getOfflineDb();
-  const user = db.users.find((u: any) => u.id === userId);
-  if (!user) return { success: false, error: 'Usuario no encontrado' };
-
-  const currentSub = new Date(user.subscriptionUntil || new Date());
-  const newSub = new Date(currentSub.getTime() > Date.now() ? currentSub.getTime() : Date.now());
-  newSub.setDate(newSub.getDate() + 30);
-  user.subscriptionUntil = newSub.toISOString();
-  user.tokensRedeemed = (user.tokensRedeemed || 0) + 1;
-
-  saveOfflineDb(db);
-  return { success: true, message: '¡Token canjeado exitosamente con 30 días adicionales!', user };
+  return { success: false, error: 'El canje requiere el servidor seguro.' };
 }
 
 export async function apiAcceptTerms(userId: string): Promise<{ success: boolean; user?: User; error?: string }> {
@@ -202,19 +117,11 @@ export async function apiAcceptTerms(userId: string): Promise<{ success: boolean
       return data;
     }
   } catch (err: any) {
-    console.warn('API accept terms fallback:', err);
+    console.warn('Secure API terms update failed:', err);
     if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
   }
 
-  const db = getOfflineDb();
-  const user = db.users.find((u: any) => u.id === userId);
-  if (user) {
-    user.hasAcceptedTerms = true;
-    user.acceptedTermsAt = new Date().toISOString();
-    saveOfflineDb(db);
-    return { success: true, user };
-  }
-  return { success: false, error: 'Usuario no encontrado' };
+  return { success: false, error: 'Aceptar términos requiere el servidor seguro.' };
 }
 
 export async function fetchAppData(userId?: string) {
@@ -228,7 +135,7 @@ export async function fetchAppData(userId?: string) {
       return data;
     }
   } catch (err) {
-    console.warn('API not available, loading from local storage fallback:', err);
+    console.warn('Secure API data request failed:', err);
   }
 
   return getOfflineDb();
@@ -496,10 +403,8 @@ export async function apiRestoreBackup(jsonData: any) {
     if (contentType && contentType.includes('application/json')) {
       return await res.json();
     }
-  } catch (e) {}
-
-  saveOfflineDb(jsonData);
-  return { success: true, message: 'Base de datos restaurada localmente.' };
+  } catch (e: any) { return { success: false, error: e?.message || 'No se pudo restaurar el respaldo en el servidor.' }; }
+  return { success: false, error: 'El servidor seguro no devolvió una respuesta válida.' };
 }
 
 export async function apiSaveSettings(settings: { userId: string; currency?: string; currencySymbol?: string; theme?: string }) {
