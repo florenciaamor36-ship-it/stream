@@ -1,0 +1,23 @@
+name: Stream Flow preview build
+on:
+  push:
+    branches: ["preview/worker-api-integration"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - name: Build static app with isolated API origin
+        run: npm run build
+        env:
+          VITE_STREAM_API_URL: https://stream-flow-api-preview.<not-deployed>.workers.dev

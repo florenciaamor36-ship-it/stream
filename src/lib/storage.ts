@@ -1,83 +1,69 @@
 import { Account, Customer, MessageTemplate, Provider, Sale, SubscriptionToken, User } from '../types';
 
+const STREAM_API_BASE = String(import.meta.env.VITE_STREAM_API_URL || '').replace(/\/$/, '');
+const SESSION_KEY = 'stream_flow_session';
+export const apiRemoteConfigured = Boolean(STREAM_API_BASE);
+
+export function clearApiSession() {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
+}
+
+export async function apiRequest(input: RequestInfo | URL, init: RequestInit = {}) {
+  const path = typeof input === 'string' ? input : input.toString();
+  const headers = new Headers(init.headers || {});
+  const token = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(SESSION_KEY) : null;
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(STREAM_API_BASE ? `${STREAM_API_BASE}${path}` : input, { ...init, headers });
+  if (!response.ok) {
+    let message = 'No se pudo completar la solicitud.';
+    try { const body = await response.clone().json(); if (body?.error) message = body.error; } catch {}
+    throw new Error(message);
+  }
+  return response;
+}
+
+function saveSessionFromAuth(data: any) {
+  const token = data?.user?.sessionToken;
+  if (token && typeof sessionStorage !== 'undefined') sessionStorage.setItem(SESSION_KEY, token);
+  if (data?.user?.sessionToken) delete data.user.sessionToken;
+  return data;
+}
+
 // Helper for offline DB fallback when hosted on static platforms like GitHub Pages
 function getOfflineDb() {
+  if (apiRemoteConfigured) throw new Error('El servidor seguro no está disponible; no se guardaron cambios localmente.');
   const raw = localStorage.getItem('stream_control_offline_db');
   if (raw) {
-    try {
-      return JSON.parse(raw);
-    } catch (e) {
-      // parse error
-    }
+    try { return JSON.parse(raw); } catch { /* rebuild an empty local store */ }
   }
-
-  const now = new Date();
-  const subDate = new Date();
-  subDate.setDate(now.getDate() + 365);
-
-  const defaultDb = {
-    users: [
-      {
-        id: 'user_admin_01',
-        email: 'florenciaamor36@gmail.com',
-        password: 'Selexionar1',
-        name: 'Florencia Amor (Admin)',
-        createdAt: now.toISOString(),
-        gracePeriodUntil: subDate.toISOString(),
-        subscriptionUntil: subDate.toISOString(),
-        tokensRedeemed: 99,
-        isAdmin: true,
-        hasAcceptedTerms: true,
-      },
-    ],
-    providers: [],
-    accounts: [],
-    customers: [],
-    sales: [],
-    templates: [
-      {
-        id: 'tmpl_welcome',
-        userId: 'user_admin_01',
-        name: 'Entrega de Credenciales (Bienvenida)',
-        type: 'welcome_credentials',
-        isDefault: true,
-        body: '🍿 *¡Hola {cliente}! Aquí están los accesos a tu pantalla de {servicio}* 🍿\n\n📧 *Correo:* {email_cuenta}\n🔑 *Clave:* {password}\n👤 *Perfil:* {perfil}\n📌 *PIN:* {pin}\n📅 *Fecha de Vencimiento:* {fecha_vencimiento}\n\n⚠️ *Reglas importantes:*\n1. No modifiques la contraseña ni el correo de la cuenta.\n2. Ingresa únicamente al perfil asignado ({perfil}) con tu PIN ({pin}).\n3. Disfruta tu contenido sin límites. ¡Gracias por tu compra!',
-      },
-    ],
-    tokens: [],
-    settings: {
-      userId: 'user_admin_01',
-      currency: 'USD',
-      currencySymbol: '$',
-      theme: 'theme-dark-red',
-    },
-    customServices: [],
-  };
-
-  localStorage.setItem('stream_control_offline_db', JSON.stringify(defaultDb));
-  return defaultDb;
+  const emptyDb = { users: [], providers: [], accounts: [], customers: [], sales: [], templates: [], tokens: [],
+    settings: { currency: 'USD', currencySymbol: '$', theme: 'theme-dark-red' }, customServices: [] };
+  localStorage.setItem('stream_control_offline_db', JSON.stringify(emptyDb));
+  return emptyDb;
 }
 
 function saveOfflineDb(db: any) {
+  if (apiRemoteConfigured) return;
   localStorage.setItem('stream_control_offline_db', JSON.stringify(db));
 }
 
 export async function apiLogin(email: string, password?: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const res = await fetch('/api/auth/login', {
+    const res = await apiRequest('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      const data = await res.json();
+      const data = saveSessionFromAuth(await res.json());
       if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
       return data;
     }
   } catch (err: any) {
     if (err.message && !err.message.includes('Unexpected token')) {
       console.warn('API login error, falling back to local database:', err.message);
+    if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
     }
   }
 
@@ -122,19 +108,20 @@ export async function apiLogin(email: string, password?: string): Promise<{ succ
 
 export async function apiRegister(email: string, password?: string, name?: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const res = await fetch('/api/auth/register', {
+    const res = await apiRequest('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
     });
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      const data = await res.json();
+      const data = saveSessionFromAuth(await res.json());
       if (!res.ok) throw new Error(data.error || 'Error al registrar usuario');
       return data;
     }
   } catch (err: any) {
     console.warn('API register error, falling back to local DB:', err);
+    if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
   }
 
   // Fallback for static host
@@ -169,7 +156,7 @@ export async function apiRegister(email: string, password?: string, name?: strin
 
 export async function apiRedeemToken(userId: string, tokenCode: string): Promise<{ success: boolean; message?: string; user?: User; error?: string }> {
   try {
-    const res = await fetch('/api/auth/redeem-token', {
+    const res = await apiRequest('/api/auth/redeem-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, tokenCode }),
@@ -182,6 +169,7 @@ export async function apiRedeemToken(userId: string, tokenCode: string): Promise
     }
   } catch (err: any) {
     console.warn('API redeem token fallback:', err);
+    if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
   }
 
   // Local fallback
@@ -201,7 +189,7 @@ export async function apiRedeemToken(userId: string, tokenCode: string): Promise
 
 export async function apiAcceptTerms(userId: string): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const res = await fetch('/api/auth/accept-terms', {
+    const res = await apiRequest('/api/auth/accept-terms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId }),
@@ -214,6 +202,7 @@ export async function apiAcceptTerms(userId: string): Promise<{ success: boolean
     }
   } catch (err: any) {
     console.warn('API accept terms fallback:', err);
+    if (apiRemoteConfigured) return { success: false, error: err?.message || 'No se pudo conectar con el servidor seguro.' } as any;
   }
 
   const db = getOfflineDb();
@@ -230,7 +219,7 @@ export async function apiAcceptTerms(userId: string): Promise<{ success: boolean
 export async function fetchAppData(userId?: string) {
   try {
     const url = userId ? `/api/data?userId=${encodeURIComponent(userId)}` : '/api/data';
-    const res = await fetch(url);
+    const res = await apiRequest(url);
     const contentType = res.headers.get('content-type');
     if (res.ok && contentType && contentType.includes('application/json')) {
       const data = await res.json();
@@ -246,7 +235,7 @@ export async function fetchAppData(userId?: string) {
 
 export async function apiUpdateCredentials(userId: string, creds: { newEmail?: string; newPassword?: string; newName?: string }) {
   try {
-    const res = await fetch('/api/auth/update-credentials', {
+    const res = await apiRequest('/api/auth/update-credentials', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, ...creds }),
@@ -273,7 +262,7 @@ export async function apiSaveProvider(provider: Partial<Provider>): Promise<Prov
   try {
     const method = provider.id ? 'PUT' : 'POST';
     const url = provider.id ? `/api/providers/${provider.id}` : '/api/providers';
-    const res = await fetch(url, {
+    const res = await apiRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(provider),
@@ -295,7 +284,7 @@ export async function apiSaveProvider(provider: Partial<Provider>): Promise<Prov
 
 export async function apiDeleteProvider(id: string) {
   try {
-    await fetch(`/api/providers/${id}`, { method: 'DELETE' });
+    await apiRequest(`/api/providers/${id}`, { method: 'DELETE' });
   } catch (e) {}
   const db = getOfflineDb();
   db.providers = db.providers.filter((p: any) => p.id !== id);
@@ -306,7 +295,7 @@ export async function apiSaveAccount(account: Partial<Account>): Promise<Account
   try {
     const method = account.id ? 'PUT' : 'POST';
     const url = account.id ? `/api/accounts/${account.id}` : '/api/accounts';
-    const res = await fetch(url, {
+    const res = await apiRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(account),
@@ -328,7 +317,7 @@ export async function apiSaveAccount(account: Partial<Account>): Promise<Account
 
 export async function apiDeleteAccount(id: string) {
   try {
-    await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+    await apiRequest(`/api/accounts/${id}`, { method: 'DELETE' });
   } catch (e) {}
   const db = getOfflineDb();
   db.accounts = db.accounts.filter((a: any) => a.id !== id);
@@ -339,7 +328,7 @@ export async function apiSaveCustomer(customer: Partial<Customer>): Promise<Cust
   try {
     const method = customer.id ? 'PUT' : 'POST';
     const url = customer.id ? `/api/customers/${customer.id}` : '/api/customers';
-    const res = await fetch(url, {
+    const res = await apiRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(customer),
@@ -361,7 +350,7 @@ export async function apiSaveCustomer(customer: Partial<Customer>): Promise<Cust
 
 export async function apiDeleteCustomer(id: string) {
   try {
-    await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+    await apiRequest(`/api/customers/${id}`, { method: 'DELETE' });
   } catch (e) {}
   const db = getOfflineDb();
   db.customers = db.customers.filter((c: any) => c.id !== id);
@@ -372,7 +361,7 @@ export async function apiSaveSale(sale: Partial<Sale>): Promise<Sale> {
   try {
     const method = sale.id ? 'PUT' : 'POST';
     const url = sale.id ? `/api/sales/${sale.id}` : '/api/sales';
-    const res = await fetch(url, {
+    const res = await apiRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sale),
@@ -394,7 +383,7 @@ export async function apiSaveSale(sale: Partial<Sale>): Promise<Sale> {
 
 export async function apiRenewSale(saleId: string, days = 30, paymentMethod?: string) {
   try {
-    const res = await fetch(`/api/sales/${saleId}/renew`, {
+    const res = await apiRequest(`/api/sales/${saleId}/renew`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ days, paymentMethod }),
@@ -423,7 +412,7 @@ export async function apiRenewSale(saleId: string, days = 30, paymentMethod?: st
 
 export async function apiDeleteSale(id: string) {
   try {
-    await fetch(`/api/sales/${id}`, { method: 'DELETE' });
+    await apiRequest(`/api/sales/${id}`, { method: 'DELETE' });
   } catch (e) {}
   const db = getOfflineDb();
   db.sales = db.sales.filter((s: any) => s.id !== id);
@@ -434,7 +423,7 @@ export async function apiSaveTemplate(template: Partial<MessageTemplate>): Promi
   try {
     const method = template.id ? 'PUT' : 'POST';
     const url = template.id ? `/api/templates/${template.id}` : '/api/templates';
-    const res = await fetch(url, {
+    const res = await apiRequest(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(template),
@@ -456,7 +445,7 @@ export async function apiSaveTemplate(template: Partial<MessageTemplate>): Promi
 
 export async function apiDeleteTemplate(id: string) {
   try {
-    await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+    await apiRequest(`/api/templates/${id}`, { method: 'DELETE' });
   } catch (e) {}
   const db = getOfflineDb();
   db.templates = db.templates.filter((t: any) => t.id !== id);
@@ -465,7 +454,7 @@ export async function apiDeleteTemplate(id: string) {
 
 export async function apiGenerateTokens(count = 1, days = 30): Promise<SubscriptionToken[]> {
   try {
-    const res = await fetch('/api/tokens/generate', {
+    const res = await apiRequest('/api/tokens/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ count, days }),
@@ -497,7 +486,7 @@ export async function apiGenerateTokens(count = 1, days = 30): Promise<Subscript
 
 export async function apiRestoreBackup(jsonData: any) {
   try {
-    const res = await fetch('/api/backup/restore', {
+    const res = await apiRequest('/api/backup/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(jsonData),
@@ -514,7 +503,7 @@ export async function apiRestoreBackup(jsonData: any) {
 
 export async function apiSaveSettings(settings: { userId: string; currency?: string; currencySymbol?: string; theme?: string }) {
   try {
-    const res = await fetch('/api/settings', {
+    const res = await apiRequest('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
@@ -533,7 +522,7 @@ export async function apiSaveSettings(settings: { userId: string; currency?: str
 
 export async function apiSaveCustomService(service: { userId: string; name: string; color?: string; badgeBg?: string; textColor?: string; iconName?: string; defaultProfiles?: number }) {
   try {
-    const res = await fetch('/api/custom-services', {
+    const res = await apiRequest('/api/custom-services', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(service),
@@ -554,7 +543,7 @@ export async function apiSaveCustomService(service: { userId: string; name: stri
 
 export async function apiDeleteCustomService(id: string) {
   try {
-    const res = await fetch(`/api/custom-services/${id}`, { method: 'DELETE' });
+    const res = await apiRequest(`/api/custom-services/${id}`, { method: 'DELETE' });
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       return await res.json();
@@ -568,4 +557,5 @@ export async function apiDeleteCustomService(id: string) {
   }
   return { success: true };
 }
+
 

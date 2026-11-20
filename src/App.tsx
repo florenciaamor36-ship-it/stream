@@ -33,6 +33,9 @@ import {
   apiSaveCustomService,
   apiDeleteCustomService,
   apiAcceptTerms,
+  apiRemoteConfigured,
+  apiRequest,
+  clearApiSession,
 } from './lib/storage';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -54,6 +57,7 @@ import { getDaysRemaining } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
+    if (apiRemoteConfigured) return null;
     try {
       const saved = localStorage.getItem('stream_control_user');
       return saved ? JSON.parse(saved) : null;
@@ -164,6 +168,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    clearApiSession();
     localStorage.removeItem('stream_control_user');
   };
 
@@ -267,7 +272,7 @@ export default function App() {
   const handleExportBackup = async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/backup/export?userId=${user.id}`);
+      const res = await apiRequest(`/api/backup/export?userId=${user.id}`);
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -288,7 +293,7 @@ export default function App() {
       reader.onload = async (e) => {
         try {
           const backupObj = JSON.parse(e.target?.result as string);
-          const res = await fetch('/api/backup/restore', {
+          const res = await apiRequest('/api/backup/restore', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user.id, backup: backupObj }),
@@ -498,3 +503,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -1,0 +1,15 @@
+name = "stream-flow-api-preview"
+main = "src/index.ts"
+compatibility_date = "2026-11-20"
+workers_dev = true
+
+[vars]
+APP_ORIGIN = "https://florenciaamor36-ship-it.github.io"
+
+[[durable_objects.bindings]]
+name = "STORE"
+class_name = "StreamFlowStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StreamFlowStore"]
