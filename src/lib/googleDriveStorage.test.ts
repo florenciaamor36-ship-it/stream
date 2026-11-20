@@ -30,7 +30,7 @@ test('creates appData file with versioned allowlisted envelope and minimum scope
   assert.equal(calls[1].init?.method, 'POST');
   assert.equal((calls[1].init?.headers as any)?.Authorization, 'Bearer mock-token');
   assert.ok(calls[1].url.includes('uploadType=multipart'));
-  assert.match(String((calls[1].init?.headers as any)?.['Content-Type']), /^multipart\\/related; boundary=/);
+  assert.ok(String((calls[1].init?.headers as any)?.['Content-Type']).startsWith('multipart/related; boundary='));
   assert.ok(String(calls[1].init?.body).includes('"ownerId":"app-user-1"'));
   assert.ok(String(calls[1].init?.body).includes('appDataFolder'));
   assert.equal(JSON.stringify(out).includes('not-uploaded'), false);
