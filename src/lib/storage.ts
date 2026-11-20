@@ -193,7 +193,8 @@ export async function apiSaveProvider(provider: Partial<Provider>): Promise<Prov
 export async function apiDeleteProvider(id: string) {
   try {
     await apiRequest(`/api/providers/${id}`, { method: 'DELETE' });
-  } catch (e) {}
+    return;
+  } catch (e) { throw e; }
   const db = getOfflineDb();
   db.providers = db.providers.filter((p: any) => p.id !== id);
   saveOfflineDb(db);
@@ -226,7 +227,8 @@ export async function apiSaveAccount(account: Partial<Account>): Promise<Account
 export async function apiDeleteAccount(id: string) {
   try {
     await apiRequest(`/api/accounts/${id}`, { method: 'DELETE' });
-  } catch (e) {}
+    return;
+  } catch (e) { throw e; }
   const db = getOfflineDb();
   db.accounts = db.accounts.filter((a: any) => a.id !== id);
   saveOfflineDb(db);
@@ -259,7 +261,8 @@ export async function apiSaveCustomer(customer: Partial<Customer>): Promise<Cust
 export async function apiDeleteCustomer(id: string) {
   try {
     await apiRequest(`/api/customers/${id}`, { method: 'DELETE' });
-  } catch (e) {}
+    return;
+  } catch (e) { throw e; }
   const db = getOfflineDb();
   db.customers = db.customers.filter((c: any) => c.id !== id);
   saveOfflineDb(db);
@@ -321,7 +324,8 @@ export async function apiRenewSale(saleId: string, days = 30, paymentMethod?: st
 export async function apiDeleteSale(id: string) {
   try {
     await apiRequest(`/api/sales/${id}`, { method: 'DELETE' });
-  } catch (e) {}
+    return;
+  } catch (e) { throw e; }
   const db = getOfflineDb();
   db.sales = db.sales.filter((s: any) => s.id !== id);
   saveOfflineDb(db);
@@ -354,7 +358,8 @@ export async function apiSaveTemplate(template: Partial<MessageTemplate>): Promi
 export async function apiDeleteTemplate(id: string) {
   try {
     await apiRequest(`/api/templates/${id}`, { method: 'DELETE' });
-  } catch (e) {}
+    return;
+  } catch (e) { throw e; }
   const db = getOfflineDb();
   db.templates = db.templates.filter((t: any) => t.id !== id);
   saveOfflineDb(db);

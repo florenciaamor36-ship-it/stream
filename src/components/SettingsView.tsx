@@ -22,6 +22,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { formatMoney } from '../lib/utils';
+import { apiRequest } from '../lib/storage';
 
 interface SettingsViewProps {
   user: User | null;
@@ -475,7 +476,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   const newName = target.name.value;
 
                   try {
-                    const res = await fetch('/api/auth/update-credentials', {
+                    const res = await apiRequest('/api/auth/update-credentials', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ userId: user.id, newEmail, newPassword, newName }),

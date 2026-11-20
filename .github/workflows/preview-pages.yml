@@ -22,5 +22,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: stream-flow-preview-dist
-          path: dist/
+          path: |
+            dist/index.html
+            dist/assets/
+            dist/google-site-verification.html
           retention-days: 1
