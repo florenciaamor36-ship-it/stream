@@ -233,6 +233,8 @@ export class StreamFlowStore {
     return json({ success: true, user: this.enriched(safe, session) }, 200, origin);
   }
   private async bootstrap(request: Request, options: { origin:string; adminEmail:string; bootstrapSecret:string }) {
+    const ip=request.headers.get('cf-connecting-ip')||'unknown';
+    if (await this.hitRateLimit('bootstrap',ip,5,3_600_000)) return json({error:'Demasiados intentos. Probá más tarde.'},429,options.origin);
     const b = await this.body(request), secret = String(b.secret || ''), email = String(b.email || '').trim().toLowerCase(), password = String(b.password || ''), name = String(b.name || 'Administrador').trim().slice(0,120);
     if (!options.bootstrapSecret || !constantTime(secret, options.bootstrapSecret) || !options.adminEmail || email !== options.adminEmail.toLowerCase()) return json({ error:'Configuración de administrador inválida.' }, 403, options.origin);
     if (this.sql.exec('SELECT id FROM users WHERE is_admin=1 LIMIT 1').toArray().length) return json({ error:'El administrador inicial ya fue creado.' }, 409, options.origin);
