@@ -81,6 +81,11 @@ assert(firstSale.data.customerId && firstSale.data.userId === loggedIn.user.id, 
 let inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
 assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'sold', 'profile not marked occupied after sale');
 await call('/api/sales', { method: 'POST', token: loggedIn.token, body: makeSale('Another buyer', '5550002'), expect: 409 });
+const secondSale = await call('/api/sales', { method: 'POST', token: loggedIn.token, body: { ...makeSale('Second profile buyer', '5550005'), profileId: 'profile-2', profileName: 'Profile 2' }, expect: 201 });
+await call(`/api/sales/${firstSale.data.id}`, { method: 'PUT', token: loggedIn.token, body: { ...firstSale.data, profileId: 'profile-2', profileName: 'Profile 2' }, expect: 409 });
+let rollbackState = (await call('/api/data', { token: loggedIn.token })).data;
+assert(rollbackState.accounts.find((x) => x.id === stock.id).profiles[0].currentSaleId === firstSale.data.id && rollbackState.accounts.find((x) => x.id === stock.id).profiles[1].currentSaleId === secondSale.data.id, 'failed reassignment did not roll back cleanly');
+await call(`/api/sales/${secondSale.data.id}`, { method: 'DELETE', token: loggedIn.token });
 await call(`/api/sales/${firstSale.data.id}`, { method: 'PUT', token: loggedIn.token, body: { ...firstSale.data, profileId: 'profile-2', profileName: 'Profile 2' } });
 inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
 assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'available' && inventoryState.accounts.find((x) => x.id === stock.id).profiles[1].currentSaleId === firstSale.data.id, 'sale reassignment did not transfer reservation');

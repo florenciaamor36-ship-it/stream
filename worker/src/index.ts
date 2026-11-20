@@ -367,7 +367,12 @@ export class StreamFlowStore {
         if(!String(updated.customerName||'').trim())return json({error:'Ingresá el nombre del cliente.'},400,origin);
         if(!Number.isFinite(Number(updated.salePrice))||Number(updated.salePrice)<0)return json({error:'El precio de venta no es válido.'},400,origin);
         updated.customerName=String(updated.customerName).trim();updated.customerPhone=String(updated.customerPhone||'').trim();
-        const failure=this.ctx.storage.transactionSync(()=>{release(item);const err=reserve(updated,item.id);if(err)throw Object.assign(new Error(err.error),{saleStatus:err.status});ensureCustomer(updated);this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id);return null;});
+        try {
+          this.ctx.storage.transactionSync(()=>{release(item);const err=reserve(updated,item.id);if(err)throw Object.assign(new Error(err.error),{saleStatus:err.status});ensureCustomer(updated);this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id);});
+        } catch(error:any) {
+          if(Number.isInteger(error?.saleStatus))return json({error:error.message},error.saleStatus,origin);
+          throw error;
+        }
         return json(updated,200,origin);
       }
       this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id); return json(updated,200,origin);
