@@ -286,7 +286,7 @@ export class StreamFlowStore {
   }
   private async collection(request: Request, user: User, kind: string, id: string|undefined, origin: string, renew=false) {
     if (!ALLOWED_KINDS.has(kind) && kind!=='customServices') return json({error:'Ruta no encontrada.'},404,origin);
-    if(request.method==='POST') {
+    if(request.method==='POST' && !id) {
       const b=await this.body(request); const item={...b,id:`${kind.slice(0,4)}_${crypto.randomUUID()}`,userId:user.id,createdAt:new Date().toISOString()};
       if(kind==='customServices') item.id=`cs_${crypto.randomUUID()}`;
       this.sql.exec('INSERT INTO items(user_id,kind,id,body) VALUES(?,?,?,?)',user.id,kind,item.id,JSON.stringify(item));
@@ -297,8 +297,8 @@ export class StreamFlowStore {
     if(request.method==='DELETE') { this.sql.exec('DELETE FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,id); return json({success:true},200,origin); }
     if(!row) return json({error:'No se encontró el registro.'},404,origin);
     const item=JSON.parse(row.body);
+    if(renew && request.method==='POST') { const b=await this.body(request), days=Math.min(3650,Math.max(1,Number(b.days)||30)), oldEnd=Date.parse(item.endDate||''), base=Math.max(Number.isFinite(oldEnd)?oldEnd:0,Date.now()), end=new Date(base); end.setUTCDate(end.getUTCDate()+days); item.startDate=new Date(base).toISOString(); item.endDate=end.toISOString(); item.status='active'; item.paymentStatus='paid'; if(b.paymentMethod)item.paymentMethod=String(b.paymentMethod).slice(0,80); item.lastRenewalDate=new Date().toISOString(); this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(item),user.id,kind,id); return json({success:true,sale:item},200,origin); }
     if(request.method==='PUT') { const b=await this.body(request); const updated={...item,...b,id:item.id,userId:user.id}; this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(updated),user.id,kind,id); return json(updated,200,origin); }
-    if(renew && request.method==='POST') { const b=await this.body(request), days=Math.min(3650,Math.max(1,Number(b.days)||30)), base=Math.max(Date.parse(item.endDate||''),Date.now()), end=new Date(base); end.setUTCDate(end.getUTCDate()+days); item.startDate=new Date(base).toISOString(); item.endDate=end.toISOString(); item.status='active'; item.paymentStatus='paid'; if(b.paymentMethod)item.paymentMethod=String(b.paymentMethod).slice(0,80); item.lastRenewalDate=new Date().toISOString(); this.sql.exec('UPDATE items SET body=? WHERE user_id=? AND kind=? AND id=?',JSON.stringify(item),user.id,kind,id); return json({success:true,sale:item},200,origin); }
     return json({error:'Método no permitido.'},405,origin);
   }
   private exportData(user: User, origin: string) {
