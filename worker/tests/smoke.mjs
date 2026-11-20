@@ -92,6 +92,9 @@ const stock = (await call('/api/accounts', { method: 'POST', token: loggedIn.tok
 const makeSale = (name, phone) => ({ accountId: stock.id, type: 'profile', profileId: 'profile-1', profileName: 'Profile 1', customerName: name, customerPhone: phone, salePrice: 5, costPrice: 2 });
 const firstSale = await call('/api/sales', { method: 'POST', token: loggedIn.token, body: makeSale('Synthetic buyer', '5550001'), expect: 201 });
 assert(firstSale.data.customerId && firstSale.data.userId === loggedIn.user.id, 'sale customer was not linked/owned');
+const renewal = await call(`/api/sales/${firstSale.data.id}/renew`, { method:'POST', token:loggedIn.token, body:{days:7,paymentMethod:'Synthetic test'} });
+assert(renewal.data.sale.status==='active' && renewal.data.sale.paymentStatus==='paid' && renewal.data.sale.lastRenewalDate && Date.parse(renewal.data.sale.endDate)>Date.now(), 'sale renewal did not extend the subscription');
+firstSale.data = renewal.data.sale;
 // Item details are returned through /api/data.
 let inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
 assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'sold', 'profile not marked occupied after sale');
@@ -107,7 +110,14 @@ assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status
 await call(`/api/sales/${firstSale.data.id}`, { method: 'PUT', token: loggedIn.token, body: { ...firstSale.data, profileId: 'profile-1', profileName: 'Profile 1' } });
 inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
 assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].currentSaleId === firstSale.data.id && inventoryState.accounts.find((x) => x.id === stock.id).profiles[1].status === 'available', 'sale reverse reassignment failed');
+const stock2 = (await call('/api/accounts', { method:'POST', token:loggedIn.token, body:{platform:'Synthetic 2',accountEmail:'stock2@example.test',profiles:[{id:'profile-3',profileName:'Profile 3',status:'available'}]}, expect:201 })).data;
+const reassigned = await call(`/api/sales/${firstSale.data.id}`, { method:'PUT', token:loggedIn.token, body:{...firstSale.data,accountId:stock2.id,profileId:'profile-3',profileName:'Profile 3',salePrice:9} });
+assert(reassigned.data.accountId===stock2.id && Number(reassigned.data.salePrice)===9, 'sale edit/reassignment did not persist new fields');
+inventoryState=(await call('/api/data',{token:loggedIn.token})).data;
+assert(inventoryState.accounts.find((x)=>x.id===stock.id).profiles[0].status==='available' && inventoryState.accounts.find((x)=>x.id===stock2.id).profiles[0].currentSaleId===firstSale.data.id, 'cross-account reassignment did not transfer reservation');
 await call(`/api/sales/${firstSale.data.id}`, { method: 'DELETE', token: loggedIn.token });
+inventoryState=(await call('/api/data',{token:loggedIn.token})).data;
+assert(inventoryState.accounts.find((x)=>x.id===stock2.id).profiles[0].status==='available', 'reassigned profile was not released on deletion');
 inventoryState = (await call('/api/data', { token: loggedIn.token })).data;
 assert(inventoryState.accounts.find((x) => x.id === stock.id).profiles[0].status === 'available', 'profile not released on sale deletion');
 const attemptConcurrentSale = async (payload) => {
@@ -140,6 +150,8 @@ let afterRejectedRestore = (await call('/api/data',{token:loggedIn.token})).data
 assert(afterRejectedRestore.providers.some((x)=>x.name==='Synthetic Backup Marker'), 'rejected restore changed existing user data');
 assert(afterRejectedRestore.settings.currency==='ARS', 'rejected restore changed existing settings');
 await call('/api/backup/restore', { method: 'POST', token: loggedIn.token, body: { backup } });
+let afterRestore = (await call('/api/data',{token:loggedIn.token})).data;
+assert(afterRestore.providers.some((x)=>x.name==='Synthetic Backup Marker') && afterRestore.settings.currency==='ARS', 'valid restore did not persist backup contents');
 
 // Subscription tokens are one-time and entitlement state is server supplied.
 const redemption = await call('/api/auth/redeem-token', { method: 'POST', token: loggedIn.token, body: { userId: 'forged-owner', tokenCode: redeemCode } });
