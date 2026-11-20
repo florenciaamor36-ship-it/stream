@@ -25,6 +25,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  /** Legacy local fallback credential. Never synced to Drive. */
+  password?: string;
   createdAt: string;
   gracePeriodUntil: string; // ISO string date (+3 days from signup)
   subscriptionUntil: string; // ISO string date
