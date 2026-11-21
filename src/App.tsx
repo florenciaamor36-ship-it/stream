@@ -55,6 +55,8 @@ import { TermsModal } from './components/TermsModal';
 import { SubscriptionLockModal } from './components/SubscriptionLockModal';
 import { InstallAppPrompt } from './components/InstallAppPrompt';
 import { getDaysRemaining } from './lib/utils';
+import { notifyToast, requestConfirmation } from './lib/feedback';
+import { FeedbackLayer } from './FeedbackLayer';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -180,6 +182,7 @@ export default function App() {
     if (res.success && res.user) {
       setUser(res.user);
       reloadData();
+      notifyToast({ message: 'Token aplicado correctamente.', kind: 'success' });
     }
     return res;
   };
@@ -187,67 +190,68 @@ export default function App() {
   // CRUD Actions
   const handleSaveProvider = async (provider: Partial<Provider>) => {
     if (!user) return;
-    await apiSaveProvider({ ...provider, userId: user.id });
-    reloadData();
+    try { await apiSaveProvider({ ...provider, userId: user.id }); await reloadData(); notifyToast({ message: provider.id ? 'Proveedor actualizado.' : 'Proveedor agregado.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar el proveedor.', kind: 'error' }); throw error; }
   };
 
   const handleDeleteProvider = async (id: string) => {
-    await apiDeleteProvider(id);
-    reloadData();
+    try { await apiDeleteProvider(id); await reloadData(); notifyToast({ message: 'Proveedor eliminado.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo eliminar el proveedor.', kind: 'error' }); throw error; }
   };
 
   const handleSaveAccount = async (account: Partial<Account>) => {
     if (!user) return;
-    await apiSaveAccount({ ...account, userId: user.id });
-    reloadData();
+    try { await apiSaveAccount({ ...account, userId: user.id }); await reloadData(); notifyToast({ message: account.id ? 'Cuenta actualizada.' : 'Cuenta agregada al inventario.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar la cuenta.', kind: 'error' }); throw error; }
   };
 
   const handleDeleteAccount = async (id: string) => {
-    await apiDeleteAccount(id);
-    reloadData();
+    try { await apiDeleteAccount(id); await reloadData(); notifyToast({ message: 'Cuenta eliminada del inventario.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo eliminar la cuenta.', kind: 'error' }); throw error; }
   };
 
   const handleSaveCustomer = async (customer: Partial<Customer>) => {
     if (!user) return;
-    await apiSaveCustomer({ ...customer, userId: user.id });
-    reloadData();
+    try { await apiSaveCustomer({ ...customer, userId: user.id }); await reloadData(); notifyToast({ message: customer.id ? 'Cliente actualizado.' : 'Cliente registrado.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar el cliente.', kind: 'error' }); throw error; }
   };
 
   const handleDeleteCustomer = async (id: string) => {
-    await apiDeleteCustomer(id);
-    reloadData();
+    try { await apiDeleteCustomer(id); await reloadData(); notifyToast({ message: 'Cliente eliminado.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo eliminar el cliente.', kind: 'error' }); throw error; }
   };
 
   const handleSaveSale = async (sale: Partial<Sale>) => {
     if (!user) return;
-    await apiSaveSale({ ...sale, userId: user.id });
-    reloadData();
+    try { await apiSaveSale({ ...sale, userId: user.id }); await reloadData(); notifyToast({ message: sale.id ? 'Venta actualizada.' : 'Venta registrada.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar la venta.', kind: 'error' }); throw error; }
   };
 
   const handleRenewSale = async (saleId: string) => {
-    await apiRenewSale(saleId, 30);
-    reloadData();
+    try { await apiRenewSale(saleId, 30); await reloadData(); notifyToast({ message: 'Venta renovada por 30 días.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo renovar la venta.', kind: 'error' }); throw error; }
   };
 
   const handleDeleteSale = async (id: string) => {
-    await apiDeleteSale(id);
-    reloadData();
+    try { await apiDeleteSale(id); await reloadData(); notifyToast({ message: 'Venta eliminada.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo eliminar la venta.', kind: 'error' }); throw error; }
   };
 
   const handleSaveTemplate = async (template: Partial<MessageTemplate>) => {
     if (!user) return;
-    await apiSaveTemplate({ ...template, userId: user.id });
-    reloadData();
+    try { await apiSaveTemplate({ ...template, userId: user.id }); await reloadData(); notifyToast({ message: template.id ? 'Plantilla actualizada.' : 'Plantilla creada.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar la plantilla.', kind: 'error' }); throw error; }
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    await apiDeleteTemplate(id);
-    reloadData();
+    try { await apiDeleteTemplate(id); await reloadData(); notifyToast({ message: 'Plantilla eliminada.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo eliminar la plantilla.', kind: 'error' }); throw error; }
   };
 
   const handleGenerateTokens = async (count: number, days: number) => {
     const generated = await apiGenerateTokens(count, days);
     reloadData();
+    notifyToast({ message: `${generated.length} token${generated.length === 1 ? '' : 's'} generado${generated.length === 1 ? '' : 's'}.`, kind: 'success' });
     return generated;
   };
 
@@ -255,19 +259,19 @@ export default function App() {
     if (!user) return;
     const updated = { ...settings, ...newSettings, userId: user.id };
     setSettings(updated);
-    await apiSaveSettings(updated);
-    reloadData();
+    try { await apiSaveSettings(updated); await reloadData(); notifyToast({ message: 'Configuración actualizada.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar la configuración.', kind: 'error' }); throw error; }
   };
 
   const handleAddCustomService = async (service: { name: string; color: string; defaultProfiles: number; iconName: string; category?: 'streaming' | 'tv_digital' | 'other' }) => {
     if (!user) return;
-    await apiSaveCustomService({ ...service, userId: user.id });
-    reloadData();
+    try { await apiSaveCustomService({ ...service, userId: user.id }); await reloadData(); notifyToast({ message: 'Servicio personalizado agregado.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo guardar el servicio.', kind: 'error' }); throw error; }
   };
 
   const handleDeleteCustomService = async (id: string) => {
-    await apiDeleteCustomService(id);
-    reloadData();
+    try { await apiDeleteCustomService(id); await reloadData(); notifyToast({ message: 'Servicio personalizado eliminado.', kind: 'success' }); }
+    catch (error) { notifyToast({ message: error instanceof Error ? error.message : 'No se pudo eliminar el servicio.', kind: 'error' }); throw error; }
   };
 
   const handleExportBackup = async () => {
@@ -282,13 +286,16 @@ export default function App() {
       a.download = `respaldo_streamcontrol_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      notifyToast({ message: 'Respaldo descargado.', kind: 'success' });
     } catch (err) {
-      alert('Error al exportar respaldo.');
+      notifyToast({ message: 'No se pudo exportar el respaldo.', kind: 'error' });
     }
   };
 
   const handleRestoreBackup = async (file: File) => {
     if (!user) return;
+    const confirmed = await requestConfirmation({ title: 'Restaurar respaldo', message: 'La restauración va a modificar los datos de esta cuenta. ¿Querés continuar?', confirmLabel: 'Restaurar respaldo', danger: true });
+    if (!confirmed) return;
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -301,18 +308,18 @@ export default function App() {
           });
           const data = await res.json();
           if (data.success) {
-            alert('¡Respaldo restaurado con éxito!');
             reloadData();
+            notifyToast({ message: 'Respaldo restaurado con éxito.', kind: 'success' });
           } else {
-            alert('Error: ' + data.error);
+            notifyToast({ message: 'No se pudo restaurar el respaldo: ' + data.error, kind: 'error' });
           }
         } catch (err) {
-          alert('Archivo JSON no válido.');
+          notifyToast({ message: 'El archivo JSON no es válido.', kind: 'error' });
         }
       };
       reader.readAsText(file);
     } catch (err) {
-      alert('Error al leer el archivo de respaldo.');
+      notifyToast({ message: 'No se pudo leer el archivo de respaldo.', kind: 'error' });
     }
   };
 
@@ -352,6 +359,7 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${getThemeContainerClass(settings.theme)} flex flex-col font-sans transition-colors duration-300 relative`}>
+      <FeedbackLayer />
       {/* App Lock Overlay if Subscription & Grace expired */}
       {isAppLocked && (
         <SubscriptionLockModal

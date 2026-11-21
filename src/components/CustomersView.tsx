@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Customer, Sale } from '../types';
+import { requestConfirmation } from '../lib/feedback';
 import { formatMoney, createWhatsAppUrl } from '../lib/utils';
 import { Users, PlusCircle, Search, Phone, Send, Edit2, Trash2, Tv, DollarSign } from 'lucide-react';
 
 interface CustomersViewProps {
   customers: Customer[];
   sales: Sale[];
-  onSaveCustomer: (customer: Partial<Customer>) => void;
-  onDeleteCustomer: (id: string) => void;
+  onSaveCustomer: (customer: Partial<Customer>) => Promise<void>;
+  onDeleteCustomer: (id: string) => Promise<void>;
 }
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
@@ -24,9 +25,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [formPhone, setFormPhone] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   const handleOpenAddModal = () => {
     setEditingCustomer(null);
+    setSaveError('');
     setFormName('');
     setFormPhone('');
     setFormEmail('');
@@ -43,8 +46,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError('');
     const payload: Partial<Customer> = {
       id: editingCustomer?.id,
       name: formName,
@@ -52,8 +56,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       email: formEmail,
       notes: formNotes,
     };
-    onSaveCustomer(payload);
-    setModalOpen(false);
+    try { await onSaveCustomer(payload); setModalOpen(false); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el cliente.'); }
   };
 
   const filteredCustomers = customers.filter((c) => {
@@ -129,8 +133,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('¿Eliminar este cliente del directorio?')) onDeleteCustomer(cust.id);
+                        onClick={async () => {
+                          if (await requestConfirmation({ title: 'Eliminar cliente', message: '¿Querés eliminar este cliente del directorio? El historial de ventas puede seguir vinculado.', confirmLabel: 'Eliminar cliente', danger: true })) { try { await onDeleteCustomer(cust.id); } catch { /* La app ya muestra el error. */ } }
                         }}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
                       >
@@ -206,6 +210,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              {saveError && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-300">{saveError}</p>}
               <div>
                 <label className="block text-zinc-400 font-medium mb-1">Nombre Completo del Cliente *</label>
                 <input

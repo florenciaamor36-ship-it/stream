@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { MessageTemplate } from '../types';
+import { notifyToast, requestConfirmation } from '../lib/feedback';
 import { interpolateTemplate } from '../lib/utils';
 import { MessageSquareCode, PlusCircle, Edit2, Trash2, Copy, Check, Sparkles, Send } from 'lucide-react';
 
 interface TemplatesViewProps {
   templates: MessageTemplate[];
-  onSaveTemplate: (tmpl: Partial<MessageTemplate>) => void;
-  onDeleteTemplate: (id: string) => void;
+  onSaveTemplate: (tmpl: Partial<MessageTemplate>) => Promise<void>;
+  onDeleteTemplate: (id: string) => Promise<void>;
 }
 
 export const TemplatesView: React.FC<TemplatesViewProps> = ({
@@ -21,6 +22,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState<any>('custom');
   const [formBody, setFormBody] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   // Tester sample values
   const [testCliente, setTestCliente] = useState('María González');
@@ -63,20 +65,22 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
 
   const copyTag = (tag: string) => {
     navigator.clipboard.writeText(tag);
+    notifyToast({ message: 'Etiqueta copiada al portapapeles.', kind: 'success' });
     setCopiedTag(tag);
     setTimeout(() => setCopiedTag(null), 2000);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError('');
     const payload: Partial<MessageTemplate> = {
       id: editingTemplate?.id,
       name: formName,
       type: formType,
       body: formBody,
     };
-    onSaveTemplate(payload);
-    setModalOpen(false);
+    try { await onSaveTemplate(payload); setModalOpen(false); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo guardar la plantilla.'); }
   };
 
   return (
@@ -163,8 +167,8 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
                     </button>
                     {!tmpl.isDefault && (
                       <button
-                        onClick={() => {
-                          if (confirm('¿Eliminar esta plantilla?')) onDeleteTemplate(tmpl.id);
+                        onClick={async () => {
+                          if (await requestConfirmation({ title: 'Eliminar plantilla', message: '¿Querés eliminar esta plantilla de mensaje?', confirmLabel: 'Eliminar plantilla', danger: true })) { try { await onDeleteTemplate(tmpl.id); } catch { /* La app ya muestra el error. */ } }
                         }}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
                       >
@@ -208,6 +212,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              {saveError && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-300">{saveError}</p>}
               <div>
                 <label className="block text-zinc-400 font-medium mb-1">Nombre de la Plantilla *</label>
                 <input

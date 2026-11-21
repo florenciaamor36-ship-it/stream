@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Account, Provider } from '../types';
+import { requestConfirmation } from '../lib/feedback';
 import { formatMoney, createWhatsAppUrl } from '../lib/utils';
 import {
   Truck,
@@ -19,7 +20,7 @@ interface SuppliersViewProps {
   providers: Provider[];
   accounts: Account[];
   onSaveProvider: (provider: Partial<Provider>) => Promise<void>;
-  onDeleteProvider: (id: string) => void;
+  onDeleteProvider: (id: string) => Promise<void>;
 }
 
 export const SuppliersView: React.FC<SuppliersViewProps> = ({
@@ -163,8 +164,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('¿Eliminar este proveedor?')) onDeleteProvider(prov.id);
+                        onClick={async () => {
+                          if (await requestConfirmation({ title: 'Eliminar proveedor', message: '¿Querés eliminar este proveedor? Revisá antes si hay cuentas asociadas.', confirmLabel: 'Eliminar proveedor', danger: true })) { try { await onDeleteProvider(prov.id); } catch { /* La app ya muestra el error. */ } }
                         }}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
                       >

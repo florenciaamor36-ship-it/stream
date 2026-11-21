@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Account, Customer, CustomService, Sale, SaleStatus, PaymentStatus, PlatformType } from '../types';
+import { notifyToast, requestConfirmation } from '../lib/feedback';
 import {
   formatMoney,
   formatDateSpanish,
@@ -37,7 +38,7 @@ interface SalesViewProps {
   currency?: string;
   onSaveSale: (sale: Partial<Sale>) => Promise<void>;
   onRenewSale: (saleId: string) => void;
-  onDeleteSale: (id: string) => void;
+  onDeleteSale: (id: string) => Promise<void>;
   defaultTemplateBody?: string;
   modalOpen: boolean;
   setModalOpen: (open: boolean) => void;
@@ -150,7 +151,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     e.preventDefault();
 
     const selectedAcc = accounts.find((a) => a.id === selectedAccountId);
-    if (!selectedAcc) return alert('Por favor selecciona una cuenta del inventario.');
+    if (!selectedAcc) { notifyToast({ message: 'Seleccioná una cuenta del inventario para continuar.', kind: 'error' }); return; }
 
     const selectedProf = selectedAcc.profiles?.find((p) => p.id === selectedProfileId);
 
@@ -440,8 +441,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
                           </button>
 
                           <button
-                            onClick={() => {
-                              if (confirm('¿Eliminar esta venta/renta?')) onDeleteSale(sale.id);
+                            onClick={async () => {
+                              if (await requestConfirmation({ title: 'Eliminar venta o renta', message: '¿Querés eliminar esta venta? Se liberará el perfil o la cuenta asignada.', confirmLabel: 'Eliminar venta', danger: true })) { try { await onDeleteSale(sale.id); } catch { /* La app ya muestra el error. */ } }
                             }}
                             className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
                             title="Eliminar registro"

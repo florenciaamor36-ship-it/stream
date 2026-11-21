@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Account, CustomService, PlatformType, Provider, Sale } from '../types';
+import { notifyToast, requestConfirmation } from '../lib/feedback';
 import { PLATFORMS, getPlatformConfig, formatMoney, formatDateSpanish } from '../lib/utils';
 import {
   Tv,
@@ -26,7 +27,7 @@ interface AccountsViewProps {
   customServices?: CustomService[];
   currency?: string;
   onSaveAccount: (account: Partial<Account>) => void;
-  onDeleteAccount: (id: string) => void;
+  onDeleteAccount: (id: string) => Promise<void>;
   onManageProviders?: () => void;
   onManageServices?: () => void;
 }
@@ -80,6 +81,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
+    notifyToast({ message: id.startsWith('pass_') ? 'Contraseña copiada.' : 'Dato copiado al portapapeles.', kind: 'success' });
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -343,8 +345,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('¿Eliminar esta cuenta del inventario?')) onDeleteAccount(acc.id);
+                      onClick={async () => {
+                        if (await requestConfirmation({ title: 'Eliminar cuenta', message: '¿Querés eliminar esta cuenta del inventario? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar cuenta', danger: true })) { try { await onDeleteAccount(acc.id); } catch { /* La app ya muestra el error. */ } }
                       }}
                       className="p-1.5 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition"
                       title="Eliminar cuenta"

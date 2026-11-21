@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CustomService, User, UserSettings } from '../types';
+import { notifyToast, requestConfirmation } from '../lib/feedback';
 import {
   Sliders,
   Coins,
@@ -151,11 +152,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [serviceIcon, setServiceIcon] = useState('Tv');
   const [isAddingService, setIsAddingService] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceName.trim()) return;
 
+    setSaveError('');
     setIsAddingService(true);
     try {
       await onAddCustomService({
@@ -168,8 +171,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setServiceName('');
       setSaveSuccessMsg('¡Nuevo servicio agregado con éxito!');
       setTimeout(() => setSaveSuccessMsg(''), 3000);
-    } catch {
-      alert('Error al agregar el servicio.');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Error al agregar el servicio.');
     } finally {
       setIsAddingService(false);
     }
@@ -177,18 +180,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleCurrencyChange = async (code: string) => {
     const selected = CURRENCY_OPTIONS.find((c) => c.code === code);
-    await onUpdateSettings({
-      currency: code,
-      currencySymbol: selected?.symbol || '$',
-    });
-    setSaveSuccessMsg(`Moneda actualizada a ${code}`);
-    setTimeout(() => setSaveSuccessMsg(''), 3000);
+    try {
+      await onUpdateSettings({ currency: code, currencySymbol: selected?.symbol || '$' });
+      setSaveSuccessMsg(`Moneda actualizada a ${code}`);
+      setTimeout(() => setSaveSuccessMsg(''), 3000);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo actualizar la moneda.'); }
   };
 
   const handleThemeChange = async (themeId: string) => {
-    await onUpdateSettings({ theme: themeId });
-    setSaveSuccessMsg('¡Tema visual actualizado!');
-    setTimeout(() => setSaveSuccessMsg(''), 3000);
+    try {
+      await onUpdateSettings({ theme: themeId });
+      setSaveSuccessMsg('¡Tema visual actualizado!');
+      setTimeout(() => setSaveSuccessMsg(''), 3000);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo actualizar el tema.'); }
   };
 
   return (
@@ -240,6 +244,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Add Service Form */}
             <form onSubmit={handleAddService} className="bg-zinc-950 rounded-xl p-4 border border-zinc-800/80 space-y-4">
+              {saveError && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-300">{saveError}</p>}
               <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
                 <Plus className="w-4 h-4 text-purple-400" /> Registrar Nuevo Servicio / Plataforma
               </h4>
@@ -349,9 +354,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
 
                       <button
-                        onClick={() => {
-                          if (confirm(`¿Eliminar el servicio personalizado "${cs.name}"?`)) {
-                            onDeleteCustomService(cs.id);
+                        onClick={async () => {
+                          if (await requestConfirmation({ title: 'Eliminar servicio', message: `¿Querés eliminar "${cs.name}" del catálogo? Las cuentas que ya lo usan no se borran.`, confirmLabel: 'Eliminar servicio', danger: true })) {
+                            try { await onDeleteCustomService(cs.id); } catch { /* La app ya muestra el error. */ }
                           }
                         }}
                         className="text-zinc-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-zinc-900 transition"
@@ -500,9 +505,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     target.password.value = '';
                     target.currentPassword.value = '';
                     setSaveSuccessMsg('¡Credenciales actualizadas con éxito!');
+                    notifyToast({ message: 'Credenciales actualizadas.', kind: 'success' });
                     setTimeout(() => setSaveSuccessMsg(''), 4000);
                   } catch (err: any) {
-                    alert(err.message || 'Error al guardar credenciales');
+                    notifyToast({ message: err.message || 'Error al guardar credenciales.', kind: 'error' });
                   }
                 }}
                 className="space-y-3 pt-1"
