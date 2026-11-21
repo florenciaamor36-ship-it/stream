@@ -113,6 +113,8 @@ export class StreamFlowStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS tokens (code_hash TEXT PRIMARY KEY, days INTEGER NOT NULL, created_at TEXT NOT NULL, used_by TEXT, used_at TEXT)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS audits (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, user_email TEXT NOT NULL, token_fingerprint TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, details TEXT NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS attempts (attempt_key TEXT PRIMARY KEY, count INTEGER NOT NULL, window_start INTEGER NOT NULL, locked_until INTEGER NOT NULL DEFAULT 0)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_deliveries (user_id TEXT NOT NULL, day_key TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(user_id,day_key))`);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -141,9 +143,10 @@ export class StreamFlowStore {
       const auth = await this.authenticate(request);
       if (!auth) return json({ error: ERROR.unauthorized }, 401, options.origin);
       const user = auth.user;
+      if (path === '/api/notifications/expirations' && request.method === 'GET') return this.expirationNotificationSummary(user.id, options.origin);
       if (path === '/api/auth/me' && request.method === 'GET') return json({ success: true, user: this.enriched(user) }, 200, options.origin);
       if (path === '/api/auth/logout' && request.method === 'POST') { this.sql.exec('DELETE FROM sessions WHERE token_hash=?', auth.tokenHash); return json({success:true},200,options.origin); }
-      if (isLocked(user) && !(path === '/api/backup/export' && request.method === 'GET')) return json({ error: ERROR.locked }, 402, options.origin);
+      if (isLocked(user) && !((path === '/api/backup/export' || path === '/api/notifications/expirations') && request.method === 'GET')) return json({ error: ERROR.locked }, 402, options.origin);
       if (path === '/api/data' && request.method === 'GET') {
         const items = this.sql.exec('SELECT kind,id,body FROM items WHERE user_id=?', user.id).toArray() as Row[];
         const result: any = { providers: [], accounts: [], customers: [], sales: [], templates: [], customServices: [], tokens: [], tokenAuditLogs: [], settings: { userId: user.id, currency: 'USD', currencySymbol: '$', theme: 'theme-dark-red' }, serverTime: now.toISOString() };
@@ -197,6 +200,16 @@ export class StreamFlowStore {
     }
   }
 
+  private expirationNotificationSummary(userId: string, origin: string): Response {
+    const today = new Date().toISOString().slice(0, 10);
+    const sales = this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=?', userId, 'sales').toArray() as any[];
+    const days = sales.map((row) => JSON.parse(row.body)).filter((sale: any) => sale.status !== 'cancelled' && sale.endDate).map((sale: any) => {
+      const target = new Date(String(sale.endDate));
+      return Math.floor((Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+    }).filter((days: number) => days === 3 || days === 1 || days === 0);
+    return json({ dayKey: today, count: days.length, earliestDays: days.length ? Math.min(...days) : null }, 200, origin);
+  }
+
   private async savePushSubscription(request: Request, user: User, origin: string) {
     if (!this.env.VAPID_PUBLIC_KEY || !this.env.VAPID_PRIVATE_KEY || !this.env.PUSH_CRON_SECRET) return json({ error: 'Las notificaciones push todavía no están configuradas en el servidor.' }, 503, origin);
     const b = await this.body(request);
@@ -209,7 +222,6 @@ export class StreamFlowStore {
     const allowedHost = host === 'fcm.googleapis.com' || host === 'updates.push.services.mozilla.com' || host.endsWith('.push.services.mozilla.com') || host === 'web.push.apple.com' || host.endsWith('.push.apple.com') || host.endsWith('.notify.windows.com');
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port && parsed.port !== '443' || endpoint.length > 2048 || !allowedHost || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return json({ error: 'El navegador envió una suscripción de notificaciones inválida.' }, 400, origin);
     const endpointHash = await sha256(endpoint);
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
     this.sql.exec('INSERT INTO push_subscriptions(user_id,endpoint_hash,endpoint,p256dh,auth,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,endpoint_hash) DO UPDATE SET endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth', user.id, endpointHash, endpoint, p256dh, auth, new Date().toISOString());
     return json({ success: true }, 200, origin);
   }
@@ -218,15 +230,12 @@ export class StreamFlowStore {
     const b = await this.body(request);
     const endpoint = typeof b.endpoint === 'string' ? b.endpoint.trim() : '';
     if (!endpoint || endpoint.length > 2048) return json({ error: 'Suscripción inválida.' }, 400, origin);
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
     this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint_hash=?', user.id, await sha256(endpoint));
     return json({ success: true }, 200, origin);
   }
 
   private async sendDailyExpiryPushes(origin: string): Promise<Response> {
     if (!this.env.VAPID_PUBLIC_KEY || !this.env.VAPID_PRIVATE_KEY) return json({ success: false, sent: 0, reason: 'push-not-configured' }, 503, origin);
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_deliveries (user_id TEXT NOT NULL, day_key TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(user_id,day_key))`);
     const today = new Date().toISOString().slice(0, 10);
     const users = this.sql.exec('SELECT DISTINCT user_id FROM items WHERE kind=?', 'sales').toArray() as any[];
     let sent = 0, stale = 0, failed = 0;

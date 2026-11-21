@@ -4,22 +4,53 @@ import { disableExpiryPush, enableExpiryPush, readExpiryPushState } from '../lib
 import { notifyToast } from '../lib/feedback';
 import { apiRequest } from '../lib/storage';
 
+declare global {
+  interface Window {
+    StreamFlowAndroid?: {
+      isExpiryNotificationsEnabled: () => boolean;
+      requestExpiryNotifications: () => void;
+      disableExpiryNotifications: () => void;
+    };
+  }
+}
+
 export const PushNotificationsSettings: React.FC = () => {
   const [supported, setSupported] = useState(false);
+  const [nativeAndroid, setNativeAndroid] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [serverReady, setServerReady] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const available = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    const inAndroidApp = Boolean(window.StreamFlowAndroid);
+    const available = inAndroidApp || ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+    setNativeAndroid(inAndroidApp);
     setSupported(available);
+    if (inAndroidApp) setEnabled(window.StreamFlowAndroid!.isExpiryNotificationsEnabled());
+    else if (available) void readExpiryPushState().then(setEnabled).catch(() => setEnabled(false));
     if (available) {
-      void readExpiryPushState().then(setEnabled).catch(() => setEnabled(false));
-      void apiRequest('/api/push/public-key').then((response) => response.json()).then((config) => setServerReady(config.enabled === true)).catch(() => setServerReady(false));
+      void apiRequest('/api/notifications/expirations').then(() => {
+        if (inAndroidApp) { setServerReady(true); return; }
+        return apiRequest('/api/push/public-key').then((response) => response.json()).then((config) => setServerReady(config.enabled === true));
+      }).catch(() => setServerReady(false));
     }
+    const onNativeState = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled: boolean; message?: string }>).detail;
+      setEnabled(detail.enabled);
+      setBusy(false);
+      notifyToast({ message: detail.message || (detail.enabled ? 'Avisos de vencimientos activados en Android.' : 'No se activaron los avisos en Android.'), kind: detail.enabled ? 'success' : 'info' });
+    };
+    window.addEventListener('streamflow:native-notification-state', onNativeState);
+    return () => window.removeEventListener('streamflow:native-notification-state', onNativeState);
   }, []);
 
   const toggle = async () => {
+    if (nativeAndroid && window.StreamFlowAndroid) {
+      setBusy(true);
+      if (enabled) window.StreamFlowAndroid.disableExpiryNotifications();
+      else window.StreamFlowAndroid.requestExpiryNotifications();
+      return;
+    }
     setBusy(true);
     try {
       if (enabled) {
@@ -46,7 +77,9 @@ export const PushNotificationsSettings: React.FC = () => {
           <div>
             <h3 className="font-bold text-white">Avisos push de vencimientos</h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-zinc-400">
-              Recibí un aviso diario si hay servicios que vencen hoy, mañana o dentro de 3 días, incluso con la web cerrada. El aviso no incluye nombres de clientes ni credenciales.
+              {nativeAndroid
+                ? 'Android revisa vencimientos cada algunas horas con conexión a internet y puede avisarte aunque cierres la app. El aviso no incluye nombres de clientes ni credenciales.'
+                : 'Recibí un aviso push diario si hay servicios que vencen hoy, mañana o dentro de 3 días, incluso con la web cerrada. El aviso no incluye nombres de clientes ni credenciales.'}
             </p>
             {!supported && <p className="mt-2 text-xs text-amber-300">Este navegador no ofrece push. En Android, usá Chrome y agregá la web a la pantalla de inicio para tener el mejor soporte.</p>}
             {supported && !serverReady && <p className="mt-2 text-xs text-amber-300">El servidor todavía no está configurado para enviar push; el control se habilitará cuando esté listo.</p>}
