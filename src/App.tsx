@@ -57,6 +57,7 @@ import { InstallAppPrompt } from './components/InstallAppPrompt';
 import { getDaysRemaining } from './lib/utils';
 import { notifyToast, requestConfirmation } from './lib/feedback';
 import { FeedbackLayer } from './FeedbackLayer';
+import { disableExpiryPush } from './lib/push';
 import { PushNotificationsSettings } from './components/PushNotificationsSettings';
 
 export default function App() {
@@ -172,9 +173,10 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await disableExpiryPush(); } catch { /* Best effort: session logout must still complete. */ }
     setUser(null);
-    void clearApiSession();
+    await clearApiSession();
   };
 
   const handleRedeemToken = async (code: string) => {

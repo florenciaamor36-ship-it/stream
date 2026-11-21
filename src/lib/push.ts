@@ -28,6 +28,10 @@ export async function enableExpiryPush(): Promise<void> {
 }
 
 export async function disableExpiryPush(): Promise<void> {
+  if (window.StreamFlowAndroid) {
+    window.StreamFlowAndroid.disableExpiryNotifications();
+    return;
+  }
   if (!('serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.getRegistration('/stream/');
   const subscription = await registration?.pushManager.getSubscription();

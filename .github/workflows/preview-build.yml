@@ -33,6 +33,13 @@ jobs:
           if [ "$test_status" -ne 0 ]; then cat /tmp/stream-flow-wrangler.log; fi
           kill $(cat /tmp/stream-flow-wrangler.pid) || true
           exit "$test_status"
+      - name: Build deployable Worker bundle for reviewed rollout
+        run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml --outdir /tmp/stream-flow-worker-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamFlow-push-worker-bundle
+          path: /tmp/stream-flow-worker-bundle/
+          if-no-files-found: error
       - name: Build static app with isolated API origin
         run: npm run build
         env:

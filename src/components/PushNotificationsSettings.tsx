@@ -34,14 +34,28 @@ export const PushNotificationsSettings: React.FC = () => {
         return apiRequest('/api/push/public-key').then((response) => response.json()).then((config) => setServerReady(config.enabled === true));
       }).catch(() => setServerReady(false));
     }
+    const onNativeReady = () => {
+      if (!window.StreamFlowAndroid) return;
+      setNativeAndroid(true);
+      setSupported(true);
+      setEnabled(window.StreamFlowAndroid.isExpiryNotificationsEnabled());
+      setServerReady(true);
+    };
     const onNativeState = (event: Event) => {
       const detail = (event as CustomEvent<{ enabled: boolean; message?: string }>).detail;
+      setNativeAndroid(true);
+      setSupported(true);
+      setServerReady(true);
       setEnabled(detail.enabled);
       setBusy(false);
-      notifyToast({ message: detail.message || (detail.enabled ? 'Avisos de vencimientos activados en Android.' : 'No se activaron los avisos en Android.'), kind: detail.enabled ? 'success' : 'info' });
+      if (detail.message) notifyToast({ message: detail.message, kind: detail.enabled ? 'success' : 'info' });
     };
+    window.addEventListener('streamflow:native-ready', onNativeReady);
     window.addEventListener('streamflow:native-notification-state', onNativeState);
-    return () => window.removeEventListener('streamflow:native-notification-state', onNativeState);
+    return () => {
+      window.removeEventListener('streamflow:native-ready', onNativeReady);
+      window.removeEventListener('streamflow:native-notification-state', onNativeState);
+    };
   }, []);
 
   const toggle = async () => {
