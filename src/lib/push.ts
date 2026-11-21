@@ -44,9 +44,23 @@ export async function disableExpiryPush(): Promise<void> {
   await subscription.unsubscribe();
 }
 
-export function readExpiryPushState(): Promise<boolean> {
-  if (!('serviceWorker' in navigator)) return Promise.resolve(false);
-  return navigator.serviceWorker.getRegistration('/stream/').then(async (registration) => !!(await registration?.pushManager.getSubscription()));
+export async function readExpiryPushState(): Promise<boolean> {
+  if (!('serviceWorker' in navigator)) return false;
+  const registration = await navigator.serviceWorker.getRegistration('/stream/');
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return false;
+  try {
+    const response = await apiRequest('/api/push/subscriptions/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    });
+    const status = await response.json();
+    return status.subscribed === true;
+  } catch {
+    // A local browser subscription alone is not enough: it may belong to another account.
+    return false;
+  }
 }
 
 function decodeApplicationServerKey(value: string): Uint8Array {

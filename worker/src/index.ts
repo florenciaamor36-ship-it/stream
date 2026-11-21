@@ -146,7 +146,14 @@ export class StreamFlowStore {
       const user = auth.user;
       if (path === '/api/notifications/expirations' && request.method === 'GET') return this.expirationNotificationSummary(user.id, options.origin);
       if (path === '/api/auth/me' && request.method === 'GET') return json({ success: true, user: this.enriched(user) }, 200, options.origin);
-      if (path === '/api/auth/logout' && request.method === 'POST') { this.sql.exec('DELETE FROM sessions WHERE token_hash=?', auth.tokenHash); return json({success:true},200,options.origin); }
+      if (path === '/api/auth/logout' && request.method === 'POST') {
+        // Push subscriptions belong to an authenticated account, not just this browser.
+        // Remove them before ending the session so another account on the same device
+        // cannot inherit reminders for the previous user's services.
+        this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=?', user.id);
+        this.sql.exec('DELETE FROM sessions WHERE token_hash=?', auth.tokenHash);
+        return json({ success: true }, 200, options.origin);
+      }
       if (isLocked(user) && !((path === '/api/backup/export' || path === '/api/notifications/expirations') && request.method === 'GET')) return json({ error: ERROR.locked }, 402, options.origin);
       if (path === '/api/data' && request.method === 'GET') {
         const items = this.sql.exec('SELECT kind,id,body FROM items WHERE user_id=?', user.id).toArray() as Row[];
@@ -182,6 +189,7 @@ export class StreamFlowStore {
       }
       if (path === '/api/push/subscriptions' && request.method === 'POST') return await this.savePushSubscription(request, user, options.origin);
       if (path === '/api/push/subscriptions' && request.method === 'DELETE') return await this.deletePushSubscription(request, user, options.origin);
+      if (path === '/api/push/subscriptions/status' && request.method === 'POST') return await this.pushSubscriptionStatus(request, user, options.origin);
       if (path === '/api/backup/export' && request.method === 'GET') return this.exportData(user, options.origin);
       if (path === '/api/backup/restore' && request.method === 'POST') return await this.restoreData(request, user, options.origin);
       if (path === '/api/settings' && request.method === 'POST') return await this.saveSettings(request, user, options.origin);
@@ -233,6 +241,15 @@ export class StreamFlowStore {
     if (!endpoint || endpoint.length > 2048) return json({ error: 'Suscripción inválida.' }, 400, origin);
     this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint_hash=?', user.id, await sha256(endpoint));
     return json({ success: true }, 200, origin);
+  }
+
+  private async pushSubscriptionStatus(request: Request, user: User, origin: string) {
+    const b = await this.body(request);
+    const endpoint = typeof b.endpoint === 'string' ? b.endpoint.trim() : '';
+    if (!endpoint || endpoint.length > 2048) return json({ error: 'Suscripción inválida.' }, 400, origin);
+    const endpointHash = await sha256(endpoint);
+    const rows = this.sql.exec('SELECT endpoint_hash FROM push_subscriptions WHERE user_id=? AND endpoint_hash=?', user.id, endpointHash).toArray();
+    return json({ subscribed: rows.length > 0 }, 200, origin);
   }
 
   private async sendDailyExpiryPushes(origin: string): Promise<Response> {

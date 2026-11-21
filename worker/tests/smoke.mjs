@@ -55,8 +55,14 @@ await call('/api/push/subscriptions', { method: 'POST', body: { endpoint: 'https
 const pushEndpoint = `https://fcm.googleapis.com/fcm/send/synthetic-${Date.now()}`;
 const pushSub = await call('/api/push/subscriptions', { method: 'POST', token: loggedIn.token, body: { endpoint: pushEndpoint, keys: { p256dh: 'BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc', auth: 'Y2ktb25seS1hdXRoLWtleQ' } } });
 assert(pushSub.data.success === true, 'valid push subscription was not stored');
+const ownPushStatus = await call('/api/push/subscriptions/status', { method: 'POST', token: loggedIn.token, body: { endpoint: pushEndpoint } });
+assert(ownPushStatus.data.subscribed === true, 'push subscription is not recognized for its owner');
+const otherPushStatus = await call('/api/push/subscriptions/status', { method: 'POST', token: admin.token, body: { endpoint: pushEndpoint } });
+assert(otherPushStatus.data.subscribed === false, 'push subscription leaked across user accounts');
 await call('/api/push/subscriptions', { method: 'POST', token: loggedIn.token, body: { endpoint: 'http://127.0.0.1/private', keys: { p256dh: 'BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc', auth: 'Y2ktb25seS1hdXRoLWtleQ' } }, expect: 400 });
 await call('/api/push/subscriptions', { method: 'DELETE', token: loggedIn.token, body: { endpoint: pushEndpoint } });
+const removedPushStatus = await call('/api/push/subscriptions/status', { method: 'POST', token: loggedIn.token, body: { endpoint: pushEndpoint } });
+assert(removedPushStatus.data.subscribed === false, 'deleted push subscription still appears enabled');
 const unauthCron = await call('/__internal/push-daily', { method: 'POST', expect: 404 });
 assert(unauthCron.data.error, 'internal push cron endpoint is publicly reachable');
 const restoredSession = await call('/api/auth/me', { token: loggedIn.token });
@@ -180,9 +186,17 @@ await call('/api/auth/redeem-token', { method: 'POST', token: registered.token, 
 const logs = (await call('/api/tokens/audit-logs', { token: admin.token })).data.logs;
 assert(Array.isArray(logs) && logs.some((x) => x.status === 'SUCCESS'), 'token audit missing');
 
-// Session revocation is enforced server-side.
+// Logging out also detaches all push subscriptions from that account. A later login
+// on the same browser/device must explicitly opt in again under its own account.
+const logoutPushEndpoint = `https://fcm.googleapis.com/fcm/send/logout-${Date.now()}`;
+await call('/api/push/subscriptions', { method: 'POST', token: loggedIn.token, body: { endpoint: logoutPushEndpoint, keys: { p256dh: 'BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc', auth: 'Y2ktb25seS1hdXRoLWtleQ' } } });
+const beforeLogoutStatus = await call('/api/push/subscriptions/status', { method: 'POST', token: loggedIn.token, body: { endpoint: logoutPushEndpoint } });
+assert(beforeLogoutStatus.data.subscribed === true, 'logout test subscription was not active before logout');
 await call('/api/auth/logout', { method: 'POST', token: loggedIn.token });
 await call('/api/data', { token: loggedIn.token, expect: 401 });
 await call('/api/auth/me', { token: loggedIn.token, expect: 401 });
+const relogin = authUser((await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password } })).data);
+const afterLogoutStatus = await call('/api/push/subscriptions/status', { method: 'POST', token: relogin.token, body: { endpoint: logoutPushEndpoint } });
+assert(afterLogoutStatus.data.subscribed === false, 'logout kept push subscription linked to prior account');
 console.log('Stream Flow synthetic Worker smoke passed: auth, token, owner isolation, transactional sales, backup, CORS, logout and persistence.');
 
