@@ -16,15 +16,11 @@ jobs:
       - run: npm install
       - name: Run isolated API smoke tests
         run: |
-          npx --yes wrangler@4 dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787 --persist-to /tmp/stream-flow-staging --var 'ADMIN_EMAIL:stream-smoke-admin@example.test' --var 'BOOTSTRAP_ADMIN_SECRET:ci-only-synthetic-bootstrap-secret' > /tmp/wrangler.log 2>&1 &
+          npx --yes wrangler@4 dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787 --persist-to /tmp/stream-flow-staging --var 'ADMIN_EMAIL:stream-smoke-admin@example.test' --var 'BOOTSTRAP_ADMIN_SECRET:ci-only-synthetic-bootstrap-secret' --var 'VAPID_PUBLIC_KEY:synthetic-public-key' --var 'VAPID_PRIVATE_KEY:synthetic-private-key' --var 'PUSH_CRON_SECRET:ci-only-synthetic-push-secret' > /tmp/wrangler.log 2>&1 &
           echo $! > /tmp/wrangler.pid
           for attempt in $(seq 1 60); do curl --fail --silent http://127.0.0.1:8787/health >/dev/null && break; sleep 1; done
-          set +e
           STREAM_API_URL=http://127.0.0.1:8787 node worker/tests/smoke.mjs
-          test_status=$?
           kill $(cat /tmp/wrangler.pid) || true
-          cat /tmp/wrangler.log
-          exit $test_status
       - name: Build production-configured website
         run: npm run build
         env:
