@@ -48,6 +48,29 @@ assert(issuedState.tokens.some((t) => t.id === issuedToken.id && !t.code), 'issu
 const registered = authUser((await call('/api/auth/register', { method: 'POST', body: { email: userEmail, password, name: 'Synthetic User' }, expect: 201 })).data);
 await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password: 'Wrong-Synthetic-Password!' }, expect: 401 });
 const loggedIn = authUser((await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password } })).data);
+// Admin agent keys are bound to one existing customer and never expose the client's app password.
+await call('/api/tokens/generate', { method:'POST', token:loggedIn.token, body:{count:1,days:30}, expect:403 });
+await call('/api/admin/agent-keys', { method:'POST', token:loggedIn.token, body:{targetEmail:userEmail,label:'Forbidden agent'}, expect:403 });
+const issuedAgent = await call('/api/admin/agent-keys', { method:'POST', token:admin.token, body:{targetEmail:userEmail,label:'Synthetic sales agent',expiresInDays:7}, expect:201 });
+const agentKey=issuedAgent.data.key;
+assert(typeof agentKey==='string' && agentKey.startsWith('sf_agent_') && issuedAgent.data.agent.scopes.includes('data:write'), 'admin failed to issue scoped agent key');
+const listedAgentKeys=await call('/api/admin/agent-keys',{token:admin.token});
+assert(listedAgentKeys.data.keys.some(k=>k.targetEmail===userEmail&&k.active) && !JSON.stringify(listedAgentKeys.data).includes(agentKey), 'admin key listing exposed secret or omitted issued key');
+await call('/api/agent/v1/data',{token:admin.token,expect:401});
+const agentCreate=await call('/api/agent/v1/accounts',{method:'POST',token:agentKey,body:{platform:'Agent Synthetic Service',accountEmail:'streaming@example.test',accountPassword:'SyntheticServicePass!',userId:'forged-user',profiles:[{id:'agent-profile',profileName:'Agent profile',status:'available'}]},expect:201});
+assert(agentCreate.data.userId===loggedIn.user.id && agentCreate.data.accountPassword==='SyntheticServicePass!', 'agent could not create/read target-owned service credential or forged userId was accepted');
+const agentData=(await call('/api/agent/v1/data',{token:agentKey})).data;
+assert(agentData.accounts.some(a=>a.id===agentCreate.data.id&&a.accountPassword==='SyntheticServicePass!')&&!('tokens' in agentData)&&agentData.agentContext.userId===loggedIn.user.id,'agent data scope or credential access wrong');
+const stranger=authUser((await call('/api/auth/register',{method:'POST',body:{email:`stream-stranger-${Date.now()}@example.test`,password,name:'Synthetic stranger'},expect:201})).data);
+const strangerAgent=await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:stranger.user.email,label:'Other synthetic agent',expiresInDays:7},expect:201});
+const strangerData=await call('/api/agent/v1/data',{token:strangerAgent.data.key});
+assert(strangerData.data.agentContext.userId===stranger.user.id&&!strangerData.data.accounts.some(a=>a.id===agentCreate.data.id),'API key leaked inventory across customers');
+await call('/api/data',{token:agentKey,expect:401});
+await call('/api/agent/v1/accounts/'+agentCreate.data.id,{method:'DELETE',token:agentKey});
+const keyId=issuedAgent.data.agent.id;
+await call('/api/admin/agent-keys/'+keyId,{method:'DELETE',token:admin.token});
+await call('/api/agent/v1/data',{token:agentKey,expect:401});
+await call('/api/admin/agent-keys/'+strangerAgent.data.agent.id,{method:'DELETE',token:admin.token});
 // Push subscriptions are user-owned and only accept Web Push endpoints and valid browser keys.
 const pushConfig = (await call('/api/push/public-key')).data;
 assert(pushConfig.enabled === true && pushConfig.publicKey, 'configured VAPID public key was not exposed');

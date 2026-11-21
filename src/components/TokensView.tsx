@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SubscriptionToken, TokenAuditLog, User } from '../types';
+import { AgentApiKeysPanel } from './AgentApiKeysPanel';
 import { getDaysRemaining, formatDateSpanish } from '../lib/utils';
 import { KeyRound, ShieldCheck, Clock, Ticket, Copy, Check, Sparkles, PlusCircle, Lock, Unlock, ShieldAlert, Activity, Cpu } from 'lucide-react';
 
@@ -203,6 +204,8 @@ export const TokensView: React.FC<TokensViewProps> = ({
           </div>
         </div>
       </div>
+
+      {isUnlocked && <AgentApiKeysPanel />}
 
       {/* Admin Token Generator Panel (Only visible when unlocked) */}
       {isUnlocked && (
