@@ -135,6 +135,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   };
 
   const handleOpenEditModal = (acc: Account) => {
+    setEditingAccount(acc);
     setSaveError('');
     setShowAddService(false);
     setNewServiceName('');
