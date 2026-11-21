@@ -73,7 +73,7 @@ function tokenCode(days: number) {
   return `STRM-${days}D-${pick(6)}-${pick(6)}-${pick(4)}`;
 }
 function routeId(path: string) { return decodeURIComponent(path.split('/').filter(Boolean).at(-1) || ''); }
-async function discardRejectedBody(request: Request) { try { await request.body?.cancel(); } catch { /* The body may already be consumed or unavailable. */ } }
+async function discardRejectedBody(request: Request) { try { await request.arrayBuffer(); } catch { /* The body may already be consumed or unavailable. */ } }
 
 export default {
   async scheduled(_controller: { cron: string; scheduledTime: number }, env: Env): Promise<void> {
