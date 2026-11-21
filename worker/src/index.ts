@@ -116,6 +116,8 @@ export class StreamFlowStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS attempts (attempt_key TEXT PRIMARY KEY, count INTEGER NOT NULL, window_start INTEGER NOT NULL, locked_until INTEGER NOT NULL DEFAULT 0)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS push_deliveries (user_id TEXT NOT NULL, day_key TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(user_id,day_key))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_keys (id TEXT PRIMARY KEY, target_user_id TEXT NOT NULL, created_by TEXT NOT NULL, label TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, key_prefix TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_audit (id TEXT PRIMARY KEY, agent_key_id TEXT NOT NULL, target_user_id TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, created_at TEXT NOT NULL)`);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -141,9 +143,16 @@ export class StreamFlowStore {
         return await this.sendDailyExpiryPushes(options.origin);
       }
 
+      if (path.startsWith('/api/agent/v1/')) return await this.handleAgentApi(request, path, options.origin);
+
       const auth = await this.authenticate(request);
       if (!auth) return json({ error: ERROR.unauthorized }, 401, options.origin);
       const user = auth.user;
+      if (path === '/api/admin/agent-keys' && request.method === 'GET') return await this.listAgentKeys(user, options.origin);
+      if (path === '/api/admin/agent-audit' && request.method === 'GET') return await this.listAgentAudit(user, options.origin);
+      if (path === '/api/admin/agent-keys' && request.method === 'POST') return await this.createAgentKey(request, user, options.origin);
+      const agentKeyMatch = path.match(/^\/api\/admin\/agent-keys\/([^/]+)$/);
+      if (agentKeyMatch && request.method === 'DELETE') return await this.revokeAgentKey(agentKeyMatch[1], user, options.origin);
       if (path === '/api/notifications/expirations' && request.method === 'GET') return this.expirationNotificationSummary(user.id, options.origin);
       if (path === '/api/auth/me' && request.method === 'GET') return json({ success: true, user: this.enriched(user) }, 200, options.origin);
       if (path === '/api/auth/logout' && request.method === 'POST') {
@@ -173,8 +182,9 @@ export class StreamFlowStore {
         return json(result, 200, options.origin);
       }
       if (path === '/api/tokens/generate' && request.method === 'POST') {
+        const body = await this.body(request);
         if (!user.isAdmin) return json({ error: 'Acceso denegado.' }, 403, options.origin);
-        const body = await this.body(request); const count = Math.min(100, Math.max(1, Number(body.count) || 1)); const days = Math.min(3650, Math.max(1, Number(body.days) || 30));
+        const count = Math.min(100, Math.max(1, Number(body.count) || 1)); const days = Math.min(3650, Math.max(1, Number(body.days) || 30));
         const created: any[] = [];
         for (let i = 0; i < count; i++) {
           let code = tokenCode(days), hash = await sha256(code);
@@ -210,6 +220,72 @@ export class StreamFlowStore {
       const saleStatus=(error as any)?.saleStatus; if(saleStatus)return json({error:message},saleStatus,options.origin);
       return json({ error: 'No se pudo completar la solicitud. Intentá de nuevo.' }, 500, options.origin);
     }
+  }
+
+  private async listAgentKeys(admin: User, origin: string) {
+    if (!admin.isAdmin) return json({error:'Acceso denegado.'},403,origin);
+    const rows=this.sql.exec(`SELECT k.id,k.target_user_id,u.email AS target_email,k.label,k.key_prefix,k.created_at,k.expires_at,k.revoked_at FROM agent_keys k JOIN users u ON u.id=k.target_user_id ORDER BY k.created_at DESC LIMIT 500`).toArray();
+    return json({success:true,keys:rows.map((r:any)=>({id:r.id,targetUserId:r.target_user_id,targetEmail:r.target_email,label:r.label,keyPrefix:r.key_prefix,createdAt:r.created_at,expiresAt:r.expires_at,revokedAt:r.revoked_at||null,active:!r.revoked_at&&Date.parse(r.expires_at)>Date.now()}))},200,origin);
+  }
+
+  private async listAgentAudit(admin: User, origin: string) {
+    if (!admin.isAdmin) return json({error:'Acceso denegado.'},403,origin);
+    const rows=this.sql.exec(`SELECT a.id,a.method,a.path,a.status,a.created_at,a.target_user_id,u.email AS target_email,k.label,k.key_prefix FROM agent_audit a LEFT JOIN users u ON u.id=a.target_user_id LEFT JOIN agent_keys k ON k.id=a.agent_key_id ORDER BY a.created_at DESC LIMIT 300`).toArray();
+    return json({success:true,events:rows.map((r:any)=>({id:r.id,method:r.method,path:r.path,status:r.status,createdAt:r.created_at,targetUserId:r.target_user_id,targetEmail:r.target_email||'Cuenta eliminada',label:r.label||'Clave revocada',keyPrefix:r.key_prefix||'',}))},200,origin);
+  }
+
+  private async createAgentKey(request: Request, admin: User, origin: string) {
+    const b=await this.body(request);
+    if (!admin.isAdmin) return json({error:'Acceso denegado.'},403,origin);
+    const email=String(b.targetEmail||'').trim().toLowerCase(), label=String(b.label||'').trim();
+    if(!validEmail(email)) return json({error:'Ingresá el email válido de una cuenta cliente existente.'},400,origin);
+    if(!label||label.length>80) return json({error:'El nombre del agente debe tener entre 1 y 80 caracteres.'},400,origin);
+    const target=this.sql.exec('SELECT id,is_admin FROM users WHERE lower(email)=?',email).toArray()[0] as any;
+    if(!target) return json({error:'No existe una cuenta con ese email. El cliente debe registrarse primero.'},404,origin);
+    if(target.is_admin===1) return json({error:'Las claves de agente se asignan a cuentas cliente, no a otras cuentas administradoras.'},400,origin);
+    const days=Math.max(1,Math.min(365,Number(b.expiresInDays)||90));
+    const key='sf_agent_'+b64(randomBytes(32)).replace(/[+/=]/g,c=>c==='+'?'-':c==='/'?'_':'');
+    const keyHash=await sha256(key), id=crypto.randomUUID(), now=new Date(), expires=new Date(now.getTime()+days*86400_000).toISOString(), prefix=key.slice(0,18);
+    this.sql.exec('INSERT INTO agent_keys(id,target_user_id,created_by,label,key_hash,key_prefix,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?,?,?,NULL)',id,target.id,admin.id,label,keyHash,prefix,now.toISOString(),expires);
+    this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),id,target.id,'ADMIN','KEY_CREATED',201,now.toISOString());
+    return json({success:true,key,agent:{id,targetEmail:email,label,keyPrefix:prefix,createdAt:now.toISOString(),expiresAt:expires,scopes:['data:read','data:write']},warning:'Esta clave se muestra una sola vez. Copiala y guardala en el gestor seguro del agente.'},201,origin);
+  }
+
+  private async revokeAgentKey(id: string, admin: User, origin: string) {
+    if (!admin.isAdmin) return json({error:'Acceso denegado.'},403,origin);
+    const row=this.sql.exec('SELECT id FROM agent_keys WHERE id=?',id).toArray()[0];
+    if(!row) return json({error:'No se encontró esa clave.'},404,origin);
+    const target=this.sql.exec('SELECT target_user_id FROM agent_keys WHERE id=?',id).toArray()[0] as any;
+    const now=new Date().toISOString();
+    this.sql.exec('UPDATE agent_keys SET revoked_at=? WHERE id=? AND revoked_at IS NULL',now,id);
+    this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),id,target.target_user_id,'ADMIN','KEY_REVOKED',200,now);
+    return json({success:true},200,origin);
+  }
+
+  private async handleAgentApi(request: Request, path: string, origin: string): Promise<Response> {
+    const header=request.headers.get('authorization')||'', key=header.startsWith('Bearer ')?header.slice(7):'';
+    if(!/^sf_agent_[A-Za-z0-9_-]{40,60}$/.test(key)) return json({error:'Clave de agente inválida o vencida.'},401,origin);
+    const row=this.sql.exec(`SELECT k.target_user_id,k.expires_at,k.revoked_at,u.* FROM agent_keys k JOIN users u ON u.id=k.target_user_id WHERE k.key_hash=?`,await sha256(key)).toArray()[0] as any;
+    if(!row||row.revoked_at||Date.parse(row.expires_at)<=Date.now()) return json({error:'Clave de agente inválida o vencida.'},401,origin);
+    const user=safeUser(row);
+    const audit=(status:number)=>this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),row.id,user.id,request.method,path,status,new Date().toISOString());
+    if(isLocked(user)) { audit(402); return json({error:ERROR.locked},402,origin); }
+    if(request.method==='GET'&&path==='/api/agent/v1/data') {
+      const items=this.sql.exec('SELECT kind,id,body FROM items WHERE user_id=?',user.id).toArray() as Row[];
+      const result:any={providers:[],accounts:[],customers:[],sales:[],templates:[],customServices:[],settings:{userId:user.id,currency:'USD',currencySymbol:'$',theme:'theme-dark-red'},serverTime:new Date().toISOString(),agentContext:{userId:user.id,email:user.email,scopes:['data:read','data:write']}};
+      for(const item of items){const body=JSON.parse(item.body);if(item.kind==='settings')result.settings=body;else if(item.kind!=='tokens'&&item.kind!=='tokenAuditLogs')(result[item.kind] ||= []).push(body);}
+      audit(200); return json(result,200,origin);
+    }
+    const match=path.match(/^\/api\/agent\/v1\/(providers|accounts|customers|sales|templates|custom-services)(?:\/([^/]+)(?:\/renew)?)?$/);
+    if(!match) { audit(404); return json({error:'Ruta de agente no encontrada.'},404,origin); }
+    const kind=match[1]==='custom-services'?'customServices':match[1], rest=path.slice('/api/agent/v1/'.length), mappedPath='/api/'+rest.replace(/^custom-services/, 'custom-services');
+    if(match[2]) {
+      const ownItem=this.sql.exec('SELECT id FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,decodeURIComponent(match[2])).toArray()[0];
+      if(!ownItem) { audit(404); return json({error:'No se encontró el registro en la cuenta vinculada.'},404,origin); }
+    }
+    const mapped=new Request(new URL(mappedPath,request.url),request);
+    const response=await this.collection(mapped,user,kind,match[2]?decodeURIComponent(match[2]):undefined,origin,path.endsWith('/renew'));
+    audit(response.status); return response;
   }
 
   private expirationNotificationSummary(userId: string, origin: string): Response {
