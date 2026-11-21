@@ -29,8 +29,13 @@ jobs:
         with:
           name: StreamFlowPro-production-web-staging
           path: dist/
-      - name: Bundle Worker without deploying it
-        run: npx --yes wrangler@4 deploy --dry-run --outdir worker-dist --config worker/wrangler.toml
+      - name: Verify Worker bundling and produce uploadable module
+        run: |
+          npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
+          mkdir -p worker-dist
+          npx esbuild worker/src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=worker-dist/index.js
+          test -s worker-dist/index.js
+          wc -c worker-dist/index.js
       - uses: actions/upload-artifact@v4
         with:
           name: StreamFlowPro-worker-bundle
