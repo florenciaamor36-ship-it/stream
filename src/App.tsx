@@ -64,7 +64,10 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
 
-  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavigationTab>(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'expirations') return 'expirations';
+    return 'dashboard';
+  });
 
   // Collections state
   const [providers, setProviders] = useState<Provider[]>([]);
