@@ -86,7 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 lg:px-6 py-3">
+    <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] lg:px-6">
       <input
         type="file"
         ref={fileInputRef}

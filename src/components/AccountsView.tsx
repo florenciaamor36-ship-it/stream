@@ -70,6 +70,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
+  const [platformBeforeAddService, setPlatformBeforeAddService] = useState<PlatformType>('Netflix');
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceCategory, setNewServiceCategory] = useState<'streaming' | 'tv_digital' | 'other'>('streaming');
   const [savingService, setSavingService] = useState(false);
@@ -172,8 +173,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     setCustomProfiles(newProfiles);
   };
 
-  const handleAddServiceFromAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const openAddService = () => {
+    if (formPlatform !== ('__add_custom_service__' as PlatformType)) setPlatformBeforeAddService(formPlatform);
+    setFormPlatform('__add_custom_service__' as PlatformType);
+    setShowAddService(true);
+    setServiceSaveError('');
+    setNewServiceName('');
+  };
+
+  const handleAddServiceFromAccount = async () => {
     const name = newServiceName.trim();
     if (!name) {
       setServiceSaveError('Escribí el nombre del servicio.');
@@ -220,6 +228,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (showAddService || formPlatform === 'Otro') {
+      setShowAddService(true);
+      setServiceSaveError('Escribí y agregá el nombre del servicio antes de guardar la cuenta.');
+      return;
+    }
 
     const providerObj = providers.find((p) => p.id === formProviderId);
 
@@ -580,8 +593,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
       {/* Add / Edit Account Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl p-6 space-y-5 my-8 animate-fadeIn">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm">
+          <div className="flex min-h-full items-start justify-center p-3 sm:items-center sm:p-6">
+          <div className="my-1 max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:my-4 sm:max-h-[calc(100dvh-3rem)] sm:p-6 space-y-5 animate-fadeIn">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h3 className="font-bold text-lg text-white">
                 {editingAccount ? 'Editar Cuenta Maestro' : 'Agregar cuenta o perfiles al inventario'}
@@ -595,13 +609,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               {/* Platform & Account Type */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-400 font-medium mb-1">Plataforma / Servicio *</label>
+                  <label className="block text-zinc-200 font-bold mb-1">Plataforma / Servicio *</label>
                   <select
                     value={formPlatform}
                     onChange={(e) => {
                       if (e.target.value === '__add_custom_service__') {
-                        setShowAddService(true);
-                        setServiceSaveError('');
+                        openAddService();
                       } else {
                         setShowAddService(false);
                         setServiceSaveError('');
@@ -617,8 +630,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       {Array.from(new Set(['IPTV / Magis', 'DGO', 'Flow', 'Telecentro Play', 'Claro video', 'Movistar TV', 'TV Digital', ...customServices.filter((service) => service.category === 'tv_digital').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
                     </optgroup>
                     <optgroup label="Otros servicios">
-                      {Array.from(new Set(['Canva Pro', 'Otro', ...customServices.filter((service) => !service.category || service.category === 'other').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
-                      <option value="__add_custom_service__">Otros · agregar un servicio nuevo…</option>
+                      {Array.from(new Set(['Canva Pro', ...customServices.filter((service) => !service.category || service.category === 'other').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
+                      <option value="__add_custom_service__">Otro · escribir nombre y agregar…</option>
                     </optgroup>
                   </select>
 
@@ -649,7 +662,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       ))}
                       <button
                         type="button"
-                        onClick={() => { setShowAddService(true); setServiceSaveError(''); }}
+                        onClick={openAddService}
                         className="rounded-lg border border-dashed border-purple-500/70 bg-purple-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-purple-200 hover:bg-purple-500/20"
                       >
                         + Otros
@@ -659,7 +672,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   </div>
 
                   {showAddService && (
-                    <form onSubmit={handleAddServiceFromAccount} className="mt-2 space-y-2 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3">
+                    <div className="mt-2 space-y-2 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3">
                       <p className="text-xs font-bold text-purple-200">Agregar servicio al catálogo</p>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
                         <input
@@ -684,10 +697,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                       </div>
                       {serviceSaveError && <p role="alert" className="text-[11px] text-red-300">{serviceSaveError}</p>}
                       <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => { setShowAddService(false); setServiceSaveError(''); }} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white">Cancelar</button>
-                        <button type="submit" disabled={savingService || !newServiceName.trim()} className="rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-purple-500 disabled:opacity-50">{savingService ? 'Guardando…' : 'Agregar y seleccionar'}</button>
+                        <button type="button" onClick={() => { setShowAddService(false); setFormPlatform(platformBeforeAddService); setServiceSaveError(''); }} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white">Cancelar</button>
+                        <button type="button" onClick={handleAddServiceFromAccount} disabled={savingService || !newServiceName.trim()} className="rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-purple-500 disabled:opacity-50">{savingService ? 'Guardando…' : 'Agregar y seleccionar'}</button>
                       </div>
-                    </form>
+                    </div>
                   )}
                 </div>
 
@@ -773,27 +786,36 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </div>
               </div>
 
-              {/* Full Account Checkbox */}
-              <div className="bg-zinc-950/80 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-white">Tipo de inventario: cuenta completa o perfiles sueltos</p>
-                  <p className="text-zinc-500 text-[11px]">
-                    Activado: se vende toda esta cuenta a un solo cliente. Desactivado: cada perfil o pantalla se administra y vende por separado.
-                  </p>
+              {/* Choose account or standalone screens explicitly */}
+              <fieldset className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-950/80 p-3">
+                <legend className="px-1 font-bold text-white">¿Qué querés cargar?</legend>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={formIsFullAccount}
+                    onClick={() => setFormIsFullAccount(true)}
+                    className={`rounded-xl border p-3 text-left transition ${formIsFullAccount ? 'border-red-500 bg-red-500/10' : 'border-zinc-700 bg-zinc-900 hover:border-zinc-500'}`}
+                  >
+                    <span className="block font-bold text-white">Cuenta completa</span>
+                    <span className="mt-1 block text-[11px] text-zinc-400">Se administra y vende como una sola cuenta.</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={!formIsFullAccount}
+                    onClick={() => setFormIsFullAccount(false)}
+                    className={`rounded-xl border p-3 text-left transition ${!formIsFullAccount ? 'border-red-500 bg-red-500/10' : 'border-zinc-700 bg-zinc-900 hover:border-zinc-500'}`}
+                  >
+                    <span className="block font-bold text-white">Perfiles / pantallas</span>
+                    <span className="mt-1 block text-[11px] text-zinc-400">Elegí cuántas pantallas disponibles querés cargar.</span>
+                  </button>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={formIsFullAccount}
-                  onChange={(e) => setFormIsFullAccount(e.target.checked)}
-                  className="w-5 h-5 accent-red-600 rounded cursor-pointer"
-                />
-              </div>
+              </fieldset>
 
               {/* Profiles & PIN Configuration */}
               {!formIsFullAccount && (
                 <div className="space-y-3 bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-zinc-200">Cantidad de perfiles o pantallas (podés agregar extras)</label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <label className="font-bold text-zinc-200">Pantallas para esta cuenta</label>
                     <select
                       value={formTotalProfiles}
                       onChange={(e) => handleTotalProfilesChange(parseInt(e.target.value))}
@@ -859,6 +881,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
           </div>
         </div>
       )}

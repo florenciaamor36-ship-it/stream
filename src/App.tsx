@@ -412,7 +412,7 @@ export default function App() {
         />
 
         {/* Main Workspace View */}
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto">
+        <main className="min-w-0 flex-1 p-4 pt-6 md:p-6 md:pt-8 overflow-y-auto">
           {/* Grace Period & Subscription Warning Banner */}
           <GracePeriodBanner user={user} onOpenRedeemToken={() => setCurrentTab('tokens')} />
 
