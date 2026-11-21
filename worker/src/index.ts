@@ -85,18 +85,20 @@ export default {
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = env.APP_ORIGIN || 'https://florenciaamor36-ship-it.github.io';
+    const allowedOrigins = new Set([origin, 'https://stream-flow-pro.pages.dev']);
     const requestOrigin = request.headers.get('Origin');
-    if (requestOrigin && requestOrigin !== origin) return json({ error: 'Origen no permitido.' }, 403, 'null');
-    if (request.method === 'OPTIONS') return json({}, 204, origin);
+    if (requestOrigin && !allowedOrigins.has(requestOrigin)) return json({ error: 'Origen no permitido.' }, 403, 'null');
+    const responseOrigin = requestOrigin && allowedOrigins.has(requestOrigin) ? requestOrigin : origin;
+    if (request.method === 'OPTIONS') return json({}, 204, responseOrigin);
     const url = new URL(request.url);
-    if (url.pathname === '/health') return json({ ok: true, backend: env.BACKEND_NAME || 'stream-flow-api-preview' }, 200, origin);
+    if (url.pathname === '/health') return json({ ok: true, backend: env.BACKEND_NAME || 'stream-flow-api-preview' }, 200, responseOrigin);
     const id = env.STORE.idFromName(env.STORE_KEY || 'stream-flow-preview-smoke-2');
     const stub = env.STORE.get(id);
     // Durable Object fetch has no RPC-style second argument; pass trusted metadata only on the internal request.
     const forwarded = new Request(request);
     const headers = new Headers(forwarded.headers);
     headers.delete('x-stream-internal-cron');
-    headers.set('x-stream-internal-origin', origin);
+    headers.set('x-stream-internal-origin', responseOrigin);
     if (env.ADMIN_EMAIL) headers.set('x-stream-internal-admin-email', env.ADMIN_EMAIL);
     else headers.delete('x-stream-internal-admin-email');
     if (url.pathname === '/api/auth/bootstrap' && env.BOOTSTRAP_ADMIN_SECRET) headers.set('x-stream-internal-bootstrap-secret', env.BOOTSTRAP_ADMIN_SECRET);
