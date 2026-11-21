@@ -258,7 +258,7 @@ export default function App() {
     reloadData();
   };
 
-  const handleAddCustomService = async (service: { name: string; color: string; defaultProfiles: number; iconName: string }) => {
+  const handleAddCustomService = async (service: { name: string; color: string; defaultProfiles: number; iconName: string; category?: 'streaming' | 'tv_digital' | 'other' }) => {
     if (!user) return;
     await apiSaveCustomService({ ...service, userId: user.id });
     reloadData();
@@ -427,6 +427,8 @@ export default function App() {
               currency={settings.currency}
               onSaveAccount={handleSaveAccount}
               onDeleteAccount={handleDeleteAccount}
+              onManageProviders={() => setCurrentTab('suppliers')}
+              onManageServices={() => setCurrentTab('settings')}
             />
           )}
 

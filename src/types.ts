@@ -1,5 +1,12 @@
 export type PlatformType =
   | 'Netflix'
+  | 'Pluto TV'
+  | 'Claro video'
+  | 'DGO'
+  | 'Flow'
+  | 'Telecentro Play'
+  | 'Movistar TV'
+  | 'TV Digital'
   | 'Disney+'
   | 'Max'
   | 'Prime Video'
@@ -156,6 +163,7 @@ export interface TokenAuditLog {
 }
 
 export interface CustomService {
+  category?: 'streaming' | 'tv_digital' | 'other';
   id: string;
   userId?: string;
   name: string;

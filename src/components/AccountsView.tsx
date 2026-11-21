@@ -27,6 +27,8 @@ interface AccountsViewProps {
   currency?: string;
   onSaveAccount: (account: Partial<Account>) => void;
   onDeleteAccount: (id: string) => void;
+  onManageProviders?: () => void;
+  onManageServices?: () => void;
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({
@@ -37,6 +39,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   currency = 'USD',
   onSaveAccount,
   onDeleteAccount,
+  onManageProviders,
+  onManageServices,
 }) => {
   const [selectedPlatform, setSelectedPlatform] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +64,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
   const [formNotes, setFormNotes] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [customProfiles, setCustomProfiles] = useState<{ profileName: string; pin: string }[]>([
     { profileName: 'Perfil 1', pin: '1010' },
     { profileName: 'Perfil 2', pin: '2020' },
@@ -80,6 +86,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const handleOpenAddModal = () => {
     setEditingAccount(null);
+    setSaveError('');
     setFormPlatform('Netflix');
     setFormEmail('');
     setFormPassword('');
@@ -115,6 +122,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   };
 
   const handleOpenEditModal = (acc: Account) => {
+    setSaveError('');
     setFormPlatform(acc.platform);
     setFormEmail(acc.accountEmail);
     setFormPassword(acc.accountPassword);
@@ -180,11 +188,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
     const payload: Partial<Account> = {
       id: editingAccount?.id,
       platform: formPlatform,
+      customPlatformName: !PLATFORMS[formPlatform] ? String(formPlatform) : '',
       accountEmail: formEmail,
       accountPassword: formPassword,
       masterPin: formMasterPin,
-      providerId: formProviderId,
-      providerName: providerObj?.name || 'Proveedor General',
+      providerId: formProviderId || '',
+      providerName: providerObj?.name || 'Sin proveedor asignado',
       cost: Number(formCost) || 0,
       totalProfiles: formIsFullAccount ? 1 : Number(formTotalProfiles),
       isFullAccount: formIsFullAccount,
@@ -193,8 +202,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       profiles: profilesData as any,
     };
 
-    onSaveAccount(payload);
-    setModalOpen(false);
+    setSaving(true); setSaveError('');
+    Promise.resolve(onSaveAccount(payload)).then(() => setModalOpen(false)).catch((error) => { setSaveError(error instanceof Error ? error.message : 'No se pudo guardar la cuenta. Revisá los datos e intentá de nuevo.'); }).finally(() => setSaving(false));
   };
 
   // Filtering
@@ -221,6 +230,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           </p>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+          {onManageProviders && <button onClick={onManageProviders} className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold text-xs flex items-center gap-2 border border-zinc-700"><Truck className="w-4 h-4" /> Agregar / ver proveedores</button>}
+          {onManageServices && <button onClick={onManageServices} className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold text-xs flex items-center gap-2 border border-zinc-700"><PlusCircle className="w-4 h-4" /> Agregar plataforma / servicio</button>}
+        </div>
         <button
           onClick={handleOpenAddModal}
           className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-red-600/20 transition active:scale-95 shrink-0"
@@ -256,7 +269,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
             Todas ({accounts.length})
           </button>
 
-          {Object.keys(PLATFORMS).map((pKey) => {
+          {Array.from(new Set([...Object.keys(PLATFORMS), ...customServices.map((service) => service.name)])).map((pKey) => {
             const count = accounts.filter((a) => a.platform === pKey).length;
             if (count === 0) return null;
             return (
@@ -510,7 +523,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl p-6 space-y-5 my-8 animate-fadeIn">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h3 className="font-bold text-lg text-white">
-                {editingAccount ? 'Editar Cuenta Maestro' : 'Agregar Nueva Cuenta Maestro'}
+                {editingAccount ? 'Editar Cuenta Maestro' : 'Agregar cuenta o perfiles al inventario'}
               </h3>
               <button onClick={() => setModalOpen(false)} className="text-zinc-400 hover:text-white text-lg">
                 ✕
@@ -527,13 +540,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     onChange={(e) => handlePlatformChange(e.target.value as PlatformType)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white font-semibold focus:outline-none focus:border-red-500"
                   >
-                    {Array.from(
-                      new Set([...Object.keys(PLATFORMS), ...customServices.map((cs) => cs.name)])
-                    ).map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
+                    <optgroup label="Streaming y plataformas">
+                      {Array.from(new Set(['Netflix', 'Disney+', 'Max', 'Prime Video', 'Paramount+', 'Apple TV+', 'Crunchyroll', 'Spotify', 'YouTube Premium', 'Pluto TV', ...customServices.filter((service) => service.category === 'streaming').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
+                    </optgroup>
+                    <optgroup label="TV digital / televisión">
+                      {Array.from(new Set(['IPTV / Magis', 'DGO', 'Flow', 'Telecentro Play', 'Claro video', 'Movistar TV', 'TV Digital', ...customServices.filter((service) => service.category === 'tv_digital').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
+                    </optgroup>
+                    <optgroup label="Otros servicios">
+                      {Array.from(new Set(['Canva Pro', 'Otro', ...customServices.filter((service) => !service.category || service.category === 'other').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
+                    </optgroup>
                   </select>
                 </div>
 
@@ -543,15 +558,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     value={formProviderId}
                     onChange={(e) => setFormProviderId(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-red-500"
-                    required
                   >
-                    <option value="">-- Seleccionar Proveedor --</option>
+                    <option value="">Sin proveedor / agregarlo después</option>
                     {providers.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name} ({p.paymentMethod})
                       </option>
                     ))}
                   </select>
+                  {providers.length === 0 && <p className="text-amber-300 text-[11px] mt-1">Todavía no cargaste proveedores. Podés crear la cuenta ahora y vincular el proveedor después.</p>}
                 </div>
               </div>
 
@@ -622,9 +637,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               {/* Full Account Checkbox */}
               <div className="bg-zinc-950/80 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-white">¿Es Venta de Cuenta Completa?</p>
+                  <p className="font-bold text-white">Tipo de inventario: cuenta completa o perfiles sueltos</p>
                   <p className="text-zinc-500 text-[11px]">
-                    Si se marca, la cuenta se venderá entera a 1 solo cliente sin dividir en pantallas.
+                    Activado: se vende toda esta cuenta a un solo cliente. Desactivado: cada perfil o pantalla se administra y vende por separado.
                   </p>
                 </div>
                 <input
@@ -639,15 +654,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
               {!formIsFullAccount && (
                 <div className="space-y-3 bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800">
                   <div className="flex items-center justify-between">
-                    <label className="font-bold text-zinc-200">Cantidad de Pantallas / Perfiles</label>
+                    <label className="font-bold text-zinc-200">Cantidad de perfiles o pantallas (podés agregar extras)</label>
                     <select
                       value={formTotalProfiles}
                       onChange={(e) => handleTotalProfilesChange(parseInt(e.target.value))}
                       className="bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1 text-white font-bold"
                     >
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                      {Array.from({ length: 50 }, (_, i) => i + 1).map((num) => (
                         <option key={num} value={num}>
-                          {num} Pantallas
+                          {num} Perfiles / pantallas
                         </option>
                       ))}
                     </select>
@@ -684,6 +699,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </div>
               )}
 
+              {saveError && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-300">{saveError}</p>}
+              {providers.length === 0 && <p className="text-zinc-400">Podés guardar la cuenta sin proveedor y asignarlo más adelante.</p>}
+
               {/* Submit Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
                 <button
@@ -695,9 +713,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-600/20"
+                  disabled={saving}
+                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-600/20 disabled:opacity-60"
                 >
-                  Guardar Cuenta
+                  {saving ? 'Guardando…' : 'Guardar Cuenta'}
                 </button>
               </div>
             </form>

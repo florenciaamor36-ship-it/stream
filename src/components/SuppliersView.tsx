@@ -18,7 +18,7 @@ import {
 interface SuppliersViewProps {
   providers: Provider[];
   accounts: Account[];
-  onSaveProvider: (provider: Partial<Provider>) => void;
+  onSaveProvider: (provider: Partial<Provider>) => Promise<void>;
   onDeleteProvider: (id: string) => void;
 }
 
@@ -40,6 +40,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [formTelegram, setFormTelegram] = useState('');
   const [formPaymentMethod, setFormPaymentMethod] = useState('Binance USDT');
   const [formNotes, setFormNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const handleOpenAddModal = () => {
     setEditingProvider(null);
@@ -65,8 +67,9 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     setModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true); setSaveError('');
     const payload: Partial<Provider> = {
       id: editingProvider?.id,
       name: formName,
@@ -77,8 +80,9 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
       paymentMethod: formPaymentMethod,
       notes: formNotes,
     };
-    onSaveProvider(payload);
-    setModalOpen(false);
+    try { await onSaveProvider(payload); setModalOpen(false); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el proveedor. Revisá tu conexión e intentá de nuevo.'); }
+    finally { setSaving(false); }
   };
 
   // Filter
@@ -226,14 +230,11 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     <span className="font-bold text-emerald-400">{formatMoney(totalSpent)}</span>
                   </div>
 
-                  <a
-                    href={waUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition active:scale-95"
-                  >
-                    <Send className="w-4 h-4" /> Escribir al Proveedor (WhatsApp)
-                  </a>
+                  {prov.phone ? (
+                    <a href={waUrl} target="_blank" rel="noopener noreferrer" className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition active:scale-95">
+                      <Send className="w-4 h-4" /> Escribir al Proveedor (WhatsApp)
+                    </a>
+                  ) : <p className="text-center text-[11px] text-zinc-500">Agregá un teléfono para habilitar WhatsApp.</p>}
                 </div>
               </div>
             );
@@ -279,11 +280,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-zinc-400 font-medium mb-1">Teléfono / WhatsApp *</label>
+                <label className="block text-zinc-400 font-medium mb-1">Teléfono / WhatsApp (opcional)</label>
                 <input
                   type="text"
-                  required
-                  placeholder="ej. +525512345678"
+                  placeholder="ej. +54 9 11 1234 5678"
                   value={formPhone}
                   onChange={(e) => setFormPhone(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-red-500"
@@ -336,6 +336,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                 />
               </div>
 
+              {saveError && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-300">{saveError}</p>}
+
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
                 <button
                   type="button"
@@ -346,9 +348,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-600/20"
+                  disabled={saving}
+                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold shadow-lg shadow-red-600/20 disabled:opacity-60"
                 >
-                  Guardar Proveedor
+                  {saving ? 'Guardando…' : 'Guardar Proveedor'}
                 </button>
               </div>
             </form>

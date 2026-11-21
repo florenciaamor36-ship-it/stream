@@ -134,8 +134,12 @@ assert(contenders.filter((x) => x.response.status === 201).length === 1 && conte
 const createdCustomer = (await call('/api/data', { token: loggedIn.token })).data.customers.find((x) => x.phone === '5550003' || x.phone === '5550004');
 assert(createdCustomer, 'sale did not auto-create customer');
 
-const custom = await call('/api/custom-services', { method: 'POST', token: loggedIn.token, body: { name: 'Synthetic Custom', userId: 'forged-owner' }, expect: 201 });
-assert(custom.data.userId === loggedIn.user.id, 'custom-service owner not enforced');
+const custom = await call('/api/custom-services', { method: 'POST', token: loggedIn.token, body: { name: 'Synthetic Custom', category: 'tv_digital', defaultProfiles: 12, userId: 'forged-owner' }, expect: 201 });
+assert(custom.data.userId === loggedIn.user.id && custom.data.category === 'tv_digital' && custom.data.defaultProfiles === 12, 'custom service category/profile count or owner not persisted');
+const customAccount = await call('/api/accounts', { method: 'POST', token: loggedIn.token, body: { platform: custom.data.name, customPlatformName: custom.data.name, accountEmail: 'synthetic-tv@example.test', accountPassword: 'synthetic', providerId: '', providerName: 'Sin proveedor asignado', isFullAccount: false, totalProfiles: 12, profiles: Array.from({length:12}, (_,i) => ({id:`screen-${i+1}`, profileName:`Pantalla ${i+1}`, status:'available'})) }, expect: 201 });
+const customState = (await call('/api/data', { token: loggedIn.token })).data;
+assert(customState.accounts.some((a) => a.id === customAccount.data.id && a.profiles.length === 12 && a.providerId === ''), 'standalone account with 12 loose profiles did not persist');
+await call(`/api/accounts/${customAccount.data.id}`, { method: 'DELETE', token: loggedIn.token });
 await call('/api/custom-services', { method: 'DELETE', token: loggedIn.token, expect: 400 });
 await call(`/api/custom-services/${custom.data.id}`, { method: 'DELETE', token: loggedIn.token });
 await call('/api/settings', { method: 'POST', token: loggedIn.token, body: { userId: 'forged-owner', currency: 'ARS', currencySymbol: '$', theme: 'theme-light' } });

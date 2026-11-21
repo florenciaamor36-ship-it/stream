@@ -33,6 +33,13 @@ export const PLATFORMS: Record<string, PlatformConfig> = {
     iconName: 'PlaySquare',
     defaultProfiles: 3,
   },
+  'Pluto TV': { name: 'Pluto TV' as PlatformType, color: '#5B2EFF', badgeBg: 'bg-violet-500/10 border-violet-500/30 text-violet-300', textColor: 'text-violet-300', iconName: 'Tv', defaultProfiles: 1 },
+  'Claro video': { name: 'Claro video' as PlatformType, color: '#DA291C', badgeBg: 'bg-red-500/10 border-red-500/30 text-red-300', textColor: 'text-red-300', iconName: 'Tv', defaultProfiles: 4 },
+  DGO: { name: 'DGO' as PlatformType, color: '#6A2CEB', badgeBg: 'bg-purple-500/10 border-purple-500/30 text-purple-300', textColor: 'text-purple-300', iconName: 'Radio', defaultProfiles: 4 },
+  Flow: { name: 'Flow' as PlatformType, color: '#6837F5', badgeBg: 'bg-purple-500/10 border-purple-500/30 text-purple-300', textColor: 'text-purple-300', iconName: 'Radio', defaultProfiles: 4 },
+  'Telecentro Play': { name: 'Telecentro Play' as PlatformType, color: '#E51D2A', badgeBg: 'bg-red-500/10 border-red-500/30 text-red-300', textColor: 'text-red-300', iconName: 'Radio', defaultProfiles: 4 },
+  'Movistar TV': { name: 'Movistar TV' as PlatformType, color: '#019DF4', badgeBg: 'bg-sky-500/10 border-sky-500/30 text-sky-300', textColor: 'text-sky-300', iconName: 'Radio', defaultProfiles: 4 },
+  'TV Digital': { name: 'TV Digital' as PlatformType, color: '#0891B2', badgeBg: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300', textColor: 'text-cyan-300', iconName: 'Radio', defaultProfiles: 4 },
   Spotify: {
     name: 'Spotify' as PlatformType,
     color: '#1DB954',

@@ -473,7 +473,7 @@ export async function apiSaveSettings(settings: { userId: string; currency?: str
   return { success: true, settings: db.settings };
 }
 
-export async function apiSaveCustomService(service: { userId: string; name: string; color?: string; badgeBg?: string; textColor?: string; iconName?: string; defaultProfiles?: number }) {
+export async function apiSaveCustomService(service: { userId: string; name: string; color?: string; badgeBg?: string; textColor?: string; iconName?: string; defaultProfiles?: number; category?: 'streaming' | 'tv_digital' | 'other' }) {
   try {
     const res = await apiRequest('/api/custom-services', {
       method: 'POST',

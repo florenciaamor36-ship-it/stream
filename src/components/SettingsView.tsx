@@ -30,7 +30,7 @@ interface SettingsViewProps {
   settings: UserSettings;
   customServices: CustomService[];
   onUpdateSettings: (newSettings: { currency?: string; currencySymbol?: string; theme?: string }) => Promise<void>;
-  onAddCustomService: (service: { name: string; color: string; defaultProfiles: number; iconName: string }) => Promise<void>;
+  onAddCustomService: (service: { name: string; color: string; defaultProfiles: number; iconName: string; category?: 'streaming' | 'tv_digital' | 'other' }) => Promise<void>;
   onDeleteCustomService: (id: string) => Promise<void>;
 }
 
@@ -145,6 +145,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   // Service Form state
   const [serviceName, setServiceName] = useState('');
+  const [serviceCategory, setServiceCategory] = useState<'streaming' | 'tv_digital' | 'other'>('streaming');
   const [serviceColor, setServiceColor] = useState('#8B5CF6');
   const [serviceProfiles, setServiceProfiles] = useState(4);
   const [serviceIcon, setServiceIcon] = useState('Tv');
@@ -159,6 +160,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       await onAddCustomService({
         name: serviceName.trim(),
+        category: serviceCategory,
         color: serviceColor,
         defaultProfiles: serviceProfiles,
         iconName: serviceIcon,
@@ -249,12 +251,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="text"
                     value={serviceName}
                     onChange={(e) => setServiceName(e.target.value)}
-                    placeholder="Ej. Magis TV 4K, ChatGPT Plus, IPTV VIP"
+                    placeholder="Ej. Netflix familiar, IPTV local, Starlink, VPN o cualquier otro"
                     required
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Categoría</label>
+                  <select value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value as typeof serviceCategory)} className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2 text-sm text-white">
+                    <option value="streaming">Streaming / plataforma</option>
+                    <option value="tv_digital">TV digital / televisión</option>
+                    <option value="other">Otros</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-zinc-400 mb-1">Pantallas / Perfiles por Defecto</label>
                   <input
@@ -334,7 +344,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                         <div>
                           <p className="font-bold text-sm text-white">{cs.name}</p>
-                          <p className="text-[11px] text-zinc-400">{cs.defaultProfiles} perfiles por defecto</p>
+                          <p className="text-[11px] text-zinc-400">{cs.category === 'tv_digital' ? 'TV digital' : cs.category === 'other' ? 'Otros' : 'Streaming'} · {cs.defaultProfiles} perfiles por defecto</p>
                         </div>
                       </div>
 
