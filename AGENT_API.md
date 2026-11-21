@@ -1,13 +1,13 @@
 # Stream Flow Pro — API para agentes
 
-La cuenta administradora emite claves desde **Tokens y Suscripción → Acceso de agentes por API**. El cliente tiene que haberse registrado antes. Cada clave pertenece a una cuenta secundaria concreta; no se autentica con ni revela la contraseña del cliente en Stream Flow Pro.
+La cuenta administradora emite claves desde **Tokens y Suscripción → Acceso de agentes por API**. El cliente tiene que haberse registrado antes y tener una suscripción vigente. Cada clave pertenece a una cuenta secundaria concreta; no se autentica con ni revela la contraseña del cliente en Stream Flow Pro.
 
 ## Seguridad y alcance
 
-- Copiá la clave al emitirla: se muestra una sola vez; el servidor conserva únicamente su SHA-256. Las claves caducan (1–365 días) y el administrador puede revocarlas al instante.
+- Copiá la clave al emitirla: se muestra una sola vez; el servidor conserva únicamente su SHA-256. Su vencimiento coincide exactamente con `subscriptionUntil` de la cuenta cliente; no se configura por separado. Si el cliente canjea otro token de suscripción, las claves activas se extienden automáticamente a la nueva fecha. Si vence la suscripción, la clave deja de autenticar, aunque no se haya revocado. El administrador también puede revocarla al instante.
 - La clave queda ligada al usuario cliente indicado y no puede leer ni modificar datos de otro usuario. Una cuenta no administradora no puede emitir claves ni generar tokens de suscripción.
 - El agente sí puede leer las credenciales de los servicios de streaming guardadas en los registros de cuenta asignados y gestionar los datos de esa cuenta. **No recibe la contraseña de inicio de sesión del cliente, sesiones, datos de administración ni claves/tokens de suscripción.**
-- El acceso requiere que la cuenta cliente no esté bloqueada por vencimiento. Guardá la clave en el gestor de secretos del agente y nunca en código público, prompts compartidos o logs.
+- El acceso se bloquea en cuanto vence la suscripción asociada. Guardá la clave en el gestor de secretos del agente y nunca en código público, prompts compartidos o logs.
 
 ## Autenticación
 
