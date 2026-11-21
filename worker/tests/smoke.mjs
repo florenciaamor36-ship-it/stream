@@ -11,7 +11,7 @@ async function call(path, { method = 'GET', token, body, expect = 200, requestOr
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   let data = {};
-  if (response.status !== 204) { try { data = await response.json(); } catch { fail(`Non-JSON response for ${method} ${path}`); } }
+  if (response.status !== 204) { const text = await response.text(); try { data = text ? JSON.parse(text) : {}; } catch { fail(`Non-JSON response for ${method} ${path} (${response.status}): ${text.slice(0,300)}`); } }
   if (response.status !== expect) fail(`Unexpected status for ${method} ${path}: ${response.status}`);
   return { response, data };
 }
