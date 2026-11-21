@@ -73,6 +73,7 @@ function tokenCode(days: number) {
   return `STRM-${days}D-${pick(6)}-${pick(6)}-${pick(4)}`;
 }
 function routeId(path: string) { return decodeURIComponent(path.split('/').filter(Boolean).at(-1) || ''); }
+async function discardRejectedBody(request: Request) { try { await request.body?.cancel(); } catch { /* The body may already be consumed or unavailable. */ } }
 
 export default {
   async scheduled(_controller: { cron: string; scheduledTime: number }, env: Env): Promise<void> {
@@ -147,7 +148,7 @@ export class StreamFlowStore {
       if (path.startsWith('/api/agent/v1/')) return await this.handleAgentApi(request, path, options.origin);
 
       const auth = await this.authenticate(request);
-      if (!auth) return json({ error: ERROR.unauthorized }, 401, options.origin);
+      if (!auth) { await discardRejectedBody(request); return json({ error: ERROR.unauthorized }, 401, options.origin); }
       const user = auth.user;
       if (path === '/api/admin/agent-keys' && request.method === 'GET') return await this.listAgentKeys(user, options.origin);
       if (path === '/api/admin/agent-audit' && request.method === 'GET') return await this.listAgentAudit(user, options.origin);
@@ -266,12 +267,12 @@ export class StreamFlowStore {
 
   private async handleAgentApi(request: Request, path: string, origin: string): Promise<Response> {
     const header=request.headers.get('authorization')||'', key=header.startsWith('Bearer ')?header.slice(7):'';
-    if(!/^sf_agent_[A-Za-z0-9_-]{40,60}$/.test(key)) return json({error:'Clave de agente inválida o vencida.'},401,origin);
+    if(!/^sf_agent_[A-Za-z0-9_-]{40,60}$/.test(key)) { await discardRejectedBody(request); return json({error:'Clave de agente inválida o vencida.'},401,origin); }
     const row=this.sql.exec(`SELECT k.id AS agent_key_id,k.target_user_id,k.expires_at,k.revoked_at,u.* FROM agent_keys k JOIN users u ON u.id=k.target_user_id WHERE k.key_hash=?`,await sha256(key)).toArray()[0] as any;
-    if(!row||row.revoked_at||Date.parse(row.expires_at)<=Date.now()||Date.parse(row.subscription_until)<=Date.now()) return json({error:'Clave de agente inválida o vencida.'},401,origin);
+    if(!row||row.revoked_at||Date.parse(row.expires_at)<=Date.now()||Date.parse(row.subscription_until)<=Date.now()) { await discardRejectedBody(request); return json({error:'Clave de agente inválida o vencida.'},401,origin); }
     const user=safeUser(row);
     const audit=(status:number)=>this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),row.agent_key_id,user.id,request.method,path,status,new Date().toISOString());
-    if(isLocked(user)) { audit(402); return json({error:ERROR.locked},402,origin); }
+    if(isLocked(user)) { await discardRejectedBody(request); audit(402); return json({error:ERROR.locked},402,origin); }
     if(request.method==='GET'&&path==='/api/agent/v1/data') {
       const items=this.sql.exec('SELECT kind,id,body FROM items WHERE user_id=?',user.id).toArray() as Row[];
       const result:any={providers:[],accounts:[],customers:[],sales:[],templates:[],customServices:[],settings:{userId:user.id,currency:'USD',currencySymbol:'$',theme:'theme-dark-red'},serverTime:new Date().toISOString(),agentContext:{userId:user.id,email:user.email,scopes:['data:read','data:write']}};
@@ -279,11 +280,11 @@ export class StreamFlowStore {
       audit(200); return json(result,200,origin);
     }
     const match=path.match(/^\/api\/agent\/v1\/(providers|accounts|customers|sales|templates|custom-services)(?:\/([^/]+)(?:\/renew)?)?$/);
-    if(!match) { audit(404); return json({error:'Ruta de agente no encontrada.'},404,origin); }
+    if(!match) { await discardRejectedBody(request); audit(404); return json({error:'Ruta de agente no encontrada.'},404,origin); }
     const kind=match[1]==='custom-services'?'customServices':match[1], rest=path.slice('/api/agent/v1/'.length), mappedPath='/api/'+rest.replace(/^custom-services/, 'custom-services');
     if(match[2]) {
       const ownItem=this.sql.exec('SELECT id FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,decodeURIComponent(match[2])).toArray()[0];
-      if(!ownItem) { audit(404); return json({error:'No se encontró el registro en la cuenta vinculada.'},404,origin); }
+      if(!ownItem) { await discardRejectedBody(request); audit(404); return json({error:'No se encontró el registro en la cuenta vinculada.'},404,origin); }
     }
     const mapped=new Request(new URL(mappedPath,request.url),request);
     const response=await this.collection(mapped,user,kind,match[2]?decodeURIComponent(match[2]):undefined,origin,path.endsWith('/renew'));
