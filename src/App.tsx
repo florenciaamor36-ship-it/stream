@@ -449,6 +449,7 @@ export default function App() {
               onDeleteAccount={handleDeleteAccount}
               onManageProviders={() => setCurrentTab('suppliers')}
               onManageServices={() => setCurrentTab('settings')}
+              onAddCustomService={handleAddCustomService}
             />
           )}
 

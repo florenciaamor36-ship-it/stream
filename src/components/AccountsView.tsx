@@ -30,6 +30,7 @@ interface AccountsViewProps {
   onDeleteAccount: (id: string) => Promise<void>;
   onManageProviders?: () => void;
   onManageServices?: () => void;
+  onAddCustomService?: (service: { name: string; color: string; defaultProfiles: number; iconName: string; category: 'streaming' | 'tv_digital' | 'other' }) => Promise<void>;
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({
@@ -42,6 +43,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   onDeleteAccount,
   onManageProviders,
   onManageServices,
+  onAddCustomService,
 }) => {
   const [selectedPlatform, setSelectedPlatform] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,6 +69,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const [formNotes, setFormNotes] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showAddService, setShowAddService] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceCategory, setNewServiceCategory] = useState<'streaming' | 'tv_digital' | 'other'>('streaming');
+  const [savingService, setSavingService] = useState(false);
+  const [serviceSaveError, setServiceSaveError] = useState('');
   const [customProfiles, setCustomProfiles] = useState<{ profileName: string; pin: string }[]>([
     { profileName: 'Perfil 1', pin: '1010' },
     { profileName: 'Perfil 2', pin: '2020' },
@@ -89,6 +96,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
   const handleOpenAddModal = () => {
     setEditingAccount(null);
     setSaveError('');
+    setShowAddService(false);
+    setNewServiceName('');
+    setServiceSaveError('');
     setFormPlatform('Netflix');
     setFormEmail('');
     setFormPassword('');
@@ -125,6 +135,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
 
   const handleOpenEditModal = (acc: Account) => {
     setSaveError('');
+    setShowAddService(false);
+    setNewServiceName('');
+    setServiceSaveError('');
     setFormPlatform(acc.platform);
     setFormEmail(acc.accountEmail);
     setFormPassword(acc.accountPassword);
@@ -157,6 +170,52 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
       newProfiles.splice(count);
     }
     setCustomProfiles(newProfiles);
+  };
+
+  const handleAddServiceFromAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newServiceName.trim();
+    if (!name) {
+      setServiceSaveError('Escribí el nombre del servicio.');
+      return;
+    }
+
+    const existingPlatform = Object.keys(PLATFORMS).find((platform) => platform.toLowerCase() === name.toLowerCase());
+    const existingCustom = customServices.find((service) => service.name.trim().toLowerCase() === name.toLowerCase());
+    if (existingPlatform || existingCustom) {
+      const existingName = existingPlatform || existingCustom!.name;
+      handlePlatformChange(existingName as PlatformType);
+      setShowAddService(false);
+      setNewServiceName('');
+      setServiceSaveError('');
+      return;
+    }
+
+    if (!onAddCustomService) {
+      setServiceSaveError('No se pudo conectar con el catálogo de servicios.');
+      return;
+    }
+
+    setSavingService(true);
+    setServiceSaveError('');
+    try {
+      const colors = { streaming: '#6366F1', tv_digital: '#0891B2', other: '#6B7280' };
+      await onAddCustomService({
+        name,
+        category: newServiceCategory,
+        color: colors[newServiceCategory],
+        defaultProfiles: 4,
+        iconName: 'Tv',
+      });
+      handlePlatformChange(name as PlatformType);
+      setShowAddService(false);
+      setNewServiceName('');
+      setServiceSaveError('');
+    } catch (error) {
+      setServiceSaveError(error instanceof Error ? error.message : 'No se pudo agregar el servicio.');
+    } finally {
+      setSavingService(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -539,7 +598,16 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                   <label className="block text-zinc-400 font-medium mb-1">Plataforma / Servicio *</label>
                   <select
                     value={formPlatform}
-                    onChange={(e) => handlePlatformChange(e.target.value as PlatformType)}
+                    onChange={(e) => {
+                      if (e.target.value === '__add_custom_service__') {
+                        setShowAddService(true);
+                        setServiceSaveError('');
+                      } else {
+                        setShowAddService(false);
+                        setServiceSaveError('');
+                        handlePlatformChange(e.target.value as PlatformType);
+                      }
+                    }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white font-semibold focus:outline-none focus:border-red-500"
                   >
                     <optgroup label="Streaming y plataformas">
@@ -550,8 +618,77 @@ export const AccountsView: React.FC<AccountsViewProps> = ({
                     </optgroup>
                     <optgroup label="Otros servicios">
                       {Array.from(new Set(['Canva Pro', 'Otro', ...customServices.filter((service) => !service.category || service.category === 'other').map((service) => service.name)])).map((p) => <option key={p} value={p}>{p}</option>)}
+                      <option value="__add_custom_service__">Otros · agregar un servicio nuevo…</option>
                     </optgroup>
                   </select>
+
+                  <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                    <p className="mb-2 text-[11px] font-semibold text-zinc-400">Accesos rápidos</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Netflix', 'Disney+', 'Max', 'Prime Video', 'Paramount+', 'Apple TV+', 'Spotify', 'YouTube Premium', 'Crunchyroll', 'Flow', 'DGO', 'IPTV / Magis'].map((platform) => (
+                        <button
+                          key={platform}
+                          type="button"
+                          aria-pressed={formPlatform === platform}
+                          onClick={() => { setShowAddService(false); handlePlatformChange(platform as PlatformType); }}
+                          className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${formPlatform === platform ? 'border-red-500 bg-red-500/15 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-white'}`}
+                        >
+                          {platform}
+                        </button>
+                      ))}
+                      {customServices.map((service) => (
+                        <button
+                          key={`custom-${service.id}`}
+                          type="button"
+                          aria-pressed={formPlatform === service.name}
+                          onClick={() => { setShowAddService(false); handlePlatformChange(service.name as PlatformType); }}
+                          className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${formPlatform === service.name ? 'border-red-500 bg-red-500/15 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-white'}`}
+                        >
+                          {service.name}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => { setShowAddService(true); setServiceSaveError(''); }}
+                        className="rounded-lg border border-dashed border-purple-500/70 bg-purple-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-purple-200 hover:bg-purple-500/20"
+                      >
+                        + Otros
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[10px] text-zinc-500">Elegí un acceso rápido o usá la lista completa de plataformas de arriba.</p>
+                  </div>
+
+                  {showAddService && (
+                    <form onSubmit={handleAddServiceFromAccount} className="mt-2 space-y-2 rounded-xl border border-purple-500/30 bg-purple-500/5 p-3">
+                      <p className="text-xs font-bold text-purple-200">Agregar servicio al catálogo</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newServiceName}
+                          onChange={(e) => setNewServiceName(e.target.value)}
+                          placeholder="Nombre del servicio, por ejemplo Netflix"
+                          aria-label="Nombre del nuevo servicio"
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
+                        />
+                        <select
+                          value={newServiceCategory}
+                          onChange={(e) => setNewServiceCategory(e.target.value as typeof newServiceCategory)}
+                          aria-label="Categoría del nuevo servicio"
+                          className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-white"
+                        >
+                          <option value="streaming">Streaming</option>
+                          <option value="tv_digital">TV digital</option>
+                          <option value="other">Otros</option>
+                        </select>
+                      </div>
+                      {serviceSaveError && <p role="alert" className="text-[11px] text-red-300">{serviceSaveError}</p>}
+                      <div className="flex justify-end gap-2">
+                        <button type="button" onClick={() => { setShowAddService(false); setServiceSaveError(''); }} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white">Cancelar</button>
+                        <button type="submit" disabled={savingService || !newServiceName.trim()} className="rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-purple-500 disabled:opacity-50">{savingService ? 'Guardando…' : 'Agregar y seleccionar'}</button>
+                      </div>
+                    </form>
+                  )}
                 </div>
 
                 <div>
