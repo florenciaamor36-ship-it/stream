@@ -53,6 +53,7 @@ import { InfoView } from './components/InfoView';
 import { AuthModal } from './components/AuthModal';
 import { TermsModal } from './components/TermsModal';
 import { SubscriptionLockModal } from './components/SubscriptionLockModal';
+import { InstallAppPrompt } from './components/InstallAppPrompt';
 import { getDaysRemaining } from './lib/utils';
 
 export default function App() {
@@ -379,6 +380,11 @@ export default function App() {
         isCloudSyncing={isCloudSyncing}
         lastCloudSync={lastCloudSync}
       />
+
+      {/* PWA install invitation; hides in standalone/installed app contexts. */}
+      <div className="w-full px-4">
+        <InstallAppPrompt />
+      </div>
 
       {/* Main Body Layout */}
       <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
