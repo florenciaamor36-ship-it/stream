@@ -56,6 +56,8 @@ const agentKey=issuedAgent.data.key;
 assert(typeof agentKey==='string' && agentKey.startsWith('sf_agent_') && issuedAgent.data.agent.scopes.includes('data:write'), 'admin failed to issue scoped agent key');
 const listedAgentKeys=await call('/api/admin/agent-keys',{token:admin.token});
 assert(listedAgentKeys.data.keys.some(k=>k.targetEmail===userEmail&&k.active) && !JSON.stringify(listedAgentKeys.data).includes(agentKey), 'admin key listing exposed secret or omitted issued key');
+const issuedAudit=await call('/api/admin/agent-audit',{token:admin.token});
+assert(issuedAudit.data.events.some(e=>e.path==='KEY_CREATED'&&e.targetEmail===userEmail),'agent key creation is missing from audit');
 await call('/api/agent/v1/data',{token:admin.token,expect:401});
 const agentCreate=await call('/api/agent/v1/accounts',{method:'POST',token:agentKey,body:{platform:'Agent Synthetic Service',accountEmail:'streaming@example.test',accountPassword:'SyntheticServicePass!',userId:'forged-user',profiles:[{id:'agent-profile',profileName:'Agent profile',status:'available'}]},expect:201});
 assert(agentCreate.data.userId===loggedIn.user.id && agentCreate.data.accountPassword==='SyntheticServicePass!', 'agent could not create/read target-owned service credential or forged userId was accepted');
@@ -71,6 +73,8 @@ const keyId=issuedAgent.data.agent.id;
 await call('/api/admin/agent-keys/'+keyId,{method:'DELETE',token:admin.token});
 await call('/api/agent/v1/data',{token:agentKey,expect:401});
 await call('/api/admin/agent-keys/'+strangerAgent.data.agent.id,{method:'DELETE',token:admin.token});
+const usageAudit=await call('/api/admin/agent-audit',{token:admin.token});
+assert(usageAudit.data.events.some(e=>e.path==='/api/agent/v1/data'&&e.targetEmail===userEmail)&&usageAudit.data.events.some(e=>e.path==='KEY_REVOKED'),'agent operations/revocation are missing from audit');
 // Push subscriptions are user-owned and only accept Web Push endpoints and valid browser keys.
 const pushConfig = (await call('/api/push/public-key')).data;
 assert(pushConfig.enabled === true && pushConfig.publicKey, 'configured VAPID public key was not exposed');
