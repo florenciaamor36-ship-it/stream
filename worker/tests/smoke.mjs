@@ -26,6 +26,11 @@ const authUser = (data) => {
 // API health, origin policy and preflight.
 let { data } = await call('/health');
 assert(data.ok === true, 'health endpoint failed');
+const freeDomainOrigin = 'https://stream-flow-pro.pages.dev';
+const customOriginHealth = await call('/health', { requestOrigin: freeDomainOrigin });
+assert(customOriginHealth.response.headers.get('access-control-allow-origin') === freeDomainOrigin, 'free production domain origin was not permitted by CORS');
+const customPreflight = await fetch(`${base}/api/data`, { method: 'OPTIONS', headers: { Origin: freeDomainOrigin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization' } });
+assert(customPreflight.status === 204 && customPreflight.headers.get('access-control-allow-origin') === freeDomainOrigin, 'free production domain preflight failed');
 let blocked = await call('/health', { requestOrigin: 'https://example.org', expect: 403 });
 assert(blocked.data.error, 'untrusted browser origin accepted');
 let preflight = await fetch(`${base}/api/data`, { method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization' } });
