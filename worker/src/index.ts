@@ -180,8 +180,9 @@ export class StreamFlowStore {
         return json(result, 200, options.origin);
       }
       if (path === '/api/tokens/generate' && request.method === 'POST') {
+        const body = await this.body(request);
         if (!user.isAdmin) return json({ error: 'Acceso denegado.' }, 403, options.origin);
-        const body = await this.body(request); const count = Math.min(100, Math.max(1, Number(body.count) || 1)); const days = Math.min(3650, Math.max(1, Number(body.days) || 30));
+        const count = Math.min(100, Math.max(1, Number(body.count) || 1)); const days = Math.min(3650, Math.max(1, Number(body.days) || 30));
         const created: any[] = [];
         for (let i = 0; i < count; i++) {
           let code = tokenCode(days), hash = await sha256(code);
@@ -226,8 +227,9 @@ export class StreamFlowStore {
   }
 
   private async createAgentKey(request: Request, admin: User, origin: string) {
+    const b=await this.body(request);
     if (!admin.isAdmin) return json({error:'Acceso denegado.'},403,origin);
-    const b=await this.body(request), email=String(b.targetEmail||'').trim().toLowerCase(), label=String(b.label||'').trim();
+    const email=String(b.targetEmail||'').trim().toLowerCase(), label=String(b.label||'').trim();
     if(!validEmail(email)) return json({error:'Ingresá el email válido de una cuenta cliente existente.'},400,origin);
     if(!label||label.length>80) return json({error:'El nombre del agente debe tener entre 1 y 80 caracteres.'},400,origin);
     const target=this.sql.exec('SELECT id,is_admin FROM users WHERE lower(email)=?',email).toArray()[0] as any;
