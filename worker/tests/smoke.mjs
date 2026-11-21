@@ -102,11 +102,11 @@ for (const [kind, idPrefix, payload] of [
 }
 // Sales reserve stock atomically, reject duplicate allocation, create/link customers, and release stock on deletion.
 const stock = (await call('/api/accounts', { method: 'POST', token: loggedIn.token, body: { platform: 'Synthetic', accountEmail: 'stock@example.test', accountPassword: 'synthetic', isFullAccount: false, isFullAccountSold: false, profiles: [{ id: 'profile-1', profileName: 'Profile 1', status: 'available' }, { id: 'profile-2', profileName: 'Profile 2', status: 'available' }] }, expect: 201 })).data;
-const makeSale = (name, phone) => ({ accountId: stock.id, type: 'profile', profileId: 'profile-1', profileName: 'Profile 1', customerName: name, customerPhone: phone, salePrice: 5, costPrice: 2, endDate: new Date(Date.now() + 86400000).toISOString() });
+const makeSale = (name, phone) => ({ accountId: stock.id, type: 'profile', profileId: 'profile-1', profileName: 'Profile 1', customerName: name, customerPhone: phone, salePrice: 5, costPrice: 2, endDate: new Date(Date.now() + 2 * 86400000).toISOString() });
 const firstSale = await call('/api/sales', { method: 'POST', token: loggedIn.token, body: makeSale('Synthetic buyer', '5550001'), expect: 201 });
 assert(firstSale.data.customerId && firstSale.data.userId === loggedIn.user.id, 'sale customer was not linked/owned');
 const expirySummary = await call('/api/notifications/expirations', { token: loggedIn.token });
-assert(expirySummary.data.count === 1 && expirySummary.data.earliestDays === 1, 'expiry summary did not identify the synthetic sale without returning customer details');
+assert(expirySummary.data.count === 1 && expirySummary.data.earliestDays === 2, 'expiry summary did not identify the synthetic sale without returning customer details');
 assert(!('sales' in expirySummary.data) && !('customers' in expirySummary.data), 'expiry summary exposed private sale/customer records');
 const renewal = await call(`/api/sales/${firstSale.data.id}/renew`, { method:'POST', token:loggedIn.token, body:{days:7,paymentMethod:'Synthetic test'} });
 assert(renewal.data.sale.status==='active' && renewal.data.sale.paymentStatus==='paid' && renewal.data.sale.lastRenewalDate && Date.parse(renewal.data.sale.endDate)>Date.now(), 'sale renewal did not extend the subscription');

@@ -207,7 +207,7 @@ export class StreamFlowStore {
     const days = sales.map((row) => JSON.parse(row.body)).filter((sale: any) => sale.status !== 'cancelled' && sale.endDate).map((sale: any) => {
       const target = new Date(String(sale.endDate));
       return Math.floor((Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
-    }).filter((days: number) => days === 3 || days === 1 || days === 0);
+    }).filter((days: number) => days >= 0 && days <= 3);
     return json({ dayKey: today, count: days.length, earliestDays: days.length ? Math.min(...days) : null }, 200, origin);
   }
 
@@ -249,7 +249,7 @@ export class StreamFlowStore {
       const expiring = relevant.filter((sale: any) => {
         const target = new Date(String(sale.endDate));
         const remaining = Math.floor((Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()) - Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())) / 86400000);
-        return remaining === 3 || remaining === 1 || remaining === 0;
+        return remaining >= 0 && remaining <= 3;
       });
       if (!expiring.length) continue;
       const subscriptions = this.sql.exec('SELECT endpoint_hash,endpoint,p256dh,auth FROM push_subscriptions WHERE user_id=?', userId).toArray() as any[];
