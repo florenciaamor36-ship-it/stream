@@ -41,6 +41,13 @@ export const PushNotificationsSettings: React.FC = () => {
       setEnabled(window.StreamFlowAndroid.isExpiryNotificationsEnabled());
       setServerReady(true);
     };
+    const onNativeUnavailable = () => {
+      setNativeAndroid(true);
+      setSupported(false);
+      setServerReady(false);
+      setEnabled(false);
+      setBusy(false);
+    };
     const onNativeState = (event: Event) => {
       const detail = (event as CustomEvent<{ enabled: boolean; message?: string }>).detail;
       setNativeAndroid(true);
@@ -52,9 +59,11 @@ export const PushNotificationsSettings: React.FC = () => {
     };
     window.addEventListener('streamflow:native-ready', onNativeReady);
     window.addEventListener('streamflow:native-notification-state', onNativeState);
+    window.addEventListener('streamflow:native-unavailable', onNativeUnavailable);
     return () => {
       window.removeEventListener('streamflow:native-ready', onNativeReady);
       window.removeEventListener('streamflow:native-notification-state', onNativeState);
+      window.removeEventListener('streamflow:native-unavailable', onNativeUnavailable);
     };
   }, []);
 
@@ -95,7 +104,7 @@ export const PushNotificationsSettings: React.FC = () => {
                 ? 'Android revisa vencimientos cada algunas horas con conexión a internet y puede avisarte aunque cierres la app. El aviso no incluye nombres de clientes ni credenciales.'
                 : 'Recibí un aviso push diario si hay servicios que vencen hoy, mañana o dentro de 3 días, incluso con la web cerrada. El aviso no incluye nombres de clientes ni credenciales.'}
             </p>
-            {!supported && <p className="mt-2 text-xs text-amber-300">Este navegador no ofrece push. En Android, usá Chrome y agregá la web a la pantalla de inicio para tener el mejor soporte.</p>}
+            {!supported && <p className="mt-2 text-xs text-amber-300">{nativeAndroid ? 'Este contenedor Android no admite avisos locales en esta versión. Actualizá la app y volvé a abrirla.' : 'Este navegador no ofrece push. En Android, usá Chrome y agregá la web a la pantalla de inicio para tener el mejor soporte.'}</p>}
             {supported && !serverReady && <p className="mt-2 text-xs text-amber-300">El servidor todavía no está configurado para enviar push; el control se habilitará cuando esté listo.</p>}
           </div>
         </div>
