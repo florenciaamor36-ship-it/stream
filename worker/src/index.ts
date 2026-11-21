@@ -117,6 +117,7 @@ export class StreamFlowStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS push_deliveries (user_id TEXT NOT NULL, day_key TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(user_id,day_key))`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_keys (id TEXT PRIMARY KEY, target_user_id TEXT NOT NULL, created_by TEXT NOT NULL, label TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, key_prefix TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT)`);
+    this.sql.exec(`UPDATE agent_keys SET expires_at=(SELECT subscription_until FROM users WHERE users.id=agent_keys.target_user_id) WHERE EXISTS (SELECT 1 FROM users WHERE users.id=agent_keys.target_user_id)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_audit (id TEXT PRIMARY KEY, agent_key_id TEXT NOT NULL, target_user_id TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, created_at TEXT NOT NULL)`);
   }
 
@@ -224,8 +225,8 @@ export class StreamFlowStore {
 
   private async listAgentKeys(admin: User, origin: string) {
     if (!admin.isAdmin) return json({error:'Acceso denegado.'},403,origin);
-    const rows=this.sql.exec(`SELECT k.id,k.target_user_id,u.email AS target_email,k.label,k.key_prefix,k.created_at,k.expires_at,k.revoked_at FROM agent_keys k JOIN users u ON u.id=k.target_user_id ORDER BY k.created_at DESC LIMIT 500`).toArray();
-    return json({success:true,keys:rows.map((r:any)=>({id:r.id,targetUserId:r.target_user_id,targetEmail:r.target_email,label:r.label,keyPrefix:r.key_prefix,createdAt:r.created_at,expiresAt:r.expires_at,revokedAt:r.revoked_at||null,active:!r.revoked_at&&Date.parse(r.expires_at)>Date.now()}))},200,origin);
+    const rows=this.sql.exec(`SELECT k.id,k.target_user_id,u.email AS target_email,u.subscription_until,k.label,k.key_prefix,k.created_at,k.revoked_at FROM agent_keys k JOIN users u ON u.id=k.target_user_id ORDER BY k.created_at DESC LIMIT 500`).toArray();
+    return json({success:true,keys:rows.map((r:any)=>({id:r.id,targetUserId:r.target_user_id,targetEmail:r.target_email,label:r.label,keyPrefix:r.key_prefix,createdAt:r.created_at,expiresAt:r.subscription_until,revokedAt:r.revoked_at||null,active:!r.revoked_at&&Date.parse(r.subscription_until)>Date.now()}))},200,origin);
   }
 
   private async listAgentAudit(admin: User, origin: string) {
@@ -240,12 +241,13 @@ export class StreamFlowStore {
     const email=String(b.targetEmail||'').trim().toLowerCase(), label=String(b.label||'').trim();
     if(!validEmail(email)) return json({error:'Ingresá el email válido de una cuenta cliente existente.'},400,origin);
     if(!label||label.length>80) return json({error:'El nombre del agente debe tener entre 1 y 80 caracteres.'},400,origin);
-    const target=this.sql.exec('SELECT id,is_admin FROM users WHERE lower(email)=?',email).toArray()[0] as any;
+    const target=this.sql.exec('SELECT id,is_admin,subscription_until FROM users WHERE lower(email)=?',email).toArray()[0] as any;
     if(!target) return json({error:'No existe una cuenta con ese email. El cliente debe registrarse primero.'},404,origin);
     if(target.is_admin===1) return json({error:'Las claves de agente se asignan a cuentas cliente, no a otras cuentas administradoras.'},400,origin);
-    const days=Math.max(1,Math.min(365,Number(b.expiresInDays)||90));
+    const expires=String(target.subscription_until||'');
+    if(!Number.isFinite(Date.parse(expires))||Date.parse(expires)<=Date.now()) return json({error:'La suscripción de esta cuenta ya venció. Primero debe activar o renovar su suscripción para emitir una API.'},400,origin);
     const key='sf_agent_'+b64(randomBytes(32)).replace(/[+/=]/g,c=>c==='+'?'-':c==='/'?'_':'');
-    const keyHash=await sha256(key), id=crypto.randomUUID(), now=new Date(), expires=new Date(now.getTime()+days*86400_000).toISOString(), prefix=key.slice(0,18);
+    const keyHash=await sha256(key), id=crypto.randomUUID(), now=new Date(), prefix=key.slice(0,18);
     this.sql.exec('INSERT INTO agent_keys(id,target_user_id,created_by,label,key_hash,key_prefix,created_at,expires_at,revoked_at) VALUES(?,?,?,?,?,?,?,?,NULL)',id,target.id,admin.id,label,keyHash,prefix,now.toISOString(),expires);
     this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),id,target.id,'ADMIN','KEY_CREATED',201,now.toISOString());
     return json({success:true,key,agent:{id,targetEmail:email,label,keyPrefix:prefix,createdAt:now.toISOString(),expiresAt:expires,scopes:['data:read','data:write']},warning:'Esta clave se muestra una sola vez. Copiala y guardala en el gestor seguro del agente.'},201,origin);
@@ -265,10 +267,10 @@ export class StreamFlowStore {
   private async handleAgentApi(request: Request, path: string, origin: string): Promise<Response> {
     const header=request.headers.get('authorization')||'', key=header.startsWith('Bearer ')?header.slice(7):'';
     if(!/^sf_agent_[A-Za-z0-9_-]{40,60}$/.test(key)) return json({error:'Clave de agente inválida o vencida.'},401,origin);
-    const row=this.sql.exec(`SELECT k.target_user_id,k.expires_at,k.revoked_at,u.* FROM agent_keys k JOIN users u ON u.id=k.target_user_id WHERE k.key_hash=?`,await sha256(key)).toArray()[0] as any;
-    if(!row||row.revoked_at||Date.parse(row.expires_at)<=Date.now()) return json({error:'Clave de agente inválida o vencida.'},401,origin);
+    const row=this.sql.exec(`SELECT k.id AS agent_key_id,k.target_user_id,k.expires_at,k.revoked_at,u.* FROM agent_keys k JOIN users u ON u.id=k.target_user_id WHERE k.key_hash=?`,await sha256(key)).toArray()[0] as any;
+    if(!row||row.revoked_at||Date.parse(row.expires_at)<=Date.now()||Date.parse(row.subscription_until)<=Date.now()) return json({error:'Clave de agente inválida o vencida.'},401,origin);
     const user=safeUser(row);
-    const audit=(status:number)=>this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),row.id,user.id,request.method,path,status,new Date().toISOString());
+    const audit=(status:number)=>this.sql.exec('INSERT INTO agent_audit(id,agent_key_id,target_user_id,method,path,status,created_at) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),row.agent_key_id,user.id,request.method,path,status,new Date().toISOString());
     if(isLocked(user)) { audit(402); return json({error:ERROR.locked},402,origin); }
     if(request.method==='GET'&&path==='/api/agent/v1/data') {
       const items=this.sql.exec('SELECT kind,id,body FROM items WHERE user_id=?',user.id).toArray() as Row[];
@@ -486,6 +488,7 @@ export class StreamFlowStore {
     const start=Math.max(Date.parse(auth.user.subscriptionUntil||''),Date.now()), end=new Date(start); end.setUTCDate(end.getUTCDate()+token.days);
     this.sql.exec('UPDATE tokens SET used_by=?,used_at=? WHERE code_hash=? AND used_by IS NULL',auth.user.email,new Date().toISOString(),hash);
     this.sql.exec('UPDATE users SET subscription_until=?,tokens_redeemed=tokens_redeemed+1 WHERE id=?',end.toISOString(),auth.user.id);
+    this.sql.exec('UPDATE agent_keys SET expires_at=? WHERE target_user_id=? AND revoked_at IS NULL',end.toISOString(),auth.user.id);
     this.sql.exec('DELETE FROM attempts WHERE attempt_key=?',key);
     this.sql.exec('INSERT INTO audits(id,user_id,user_email,token_fingerprint,status,created_at,details) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),auth.user.id,auth.user.email,(await sha256(code)).slice(0,12),'SUCCESS',new Date().toISOString(),`Canje exitoso: +${token.days} días.`);
     const updated=safeUser(this.sql.exec('SELECT * FROM users WHERE id=?',auth.user.id).toArray()[0]);

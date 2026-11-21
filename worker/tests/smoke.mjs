@@ -53,9 +53,10 @@ await call('/api/tokens/generate', { method:'POST', token:loggedIn.token, body:{
 await call('/api/admin/agent-keys', { method:'POST', token:loggedIn.token, body:{targetEmail:userEmail,label:'Forbidden agent'}, expect:403 });
 await call('/api/admin/agent-keys',{token:loggedIn.token,expect:403});
 await call('/api/admin/agent-audit',{token:loggedIn.token,expect:403});
-const issuedAgent = await call('/api/admin/agent-keys', { method:'POST', token:admin.token, body:{targetEmail:userEmail,label:'Synthetic sales agent',expiresInDays:7}, expect:201 });
+const issuedAgent = await call('/api/admin/agent-keys', { method:'POST', token:admin.token, body:{targetEmail:userEmail,label:'Synthetic sales agent',expiresInDays:365}, expect:201 });
 const agentKey=issuedAgent.data.key;
 assert(typeof agentKey==='string' && agentKey.startsWith('sf_agent_') && issuedAgent.data.agent.scopes.includes('data:write'), 'admin failed to issue scoped agent key');
+assert(issuedAgent.data.agent.expiresAt===loggedIn.user.subscriptionUntil,'agent API did not inherit the customer's subscription expiry');
 const listedAgentKeys=await call('/api/admin/agent-keys',{token:admin.token});
 assert(listedAgentKeys.data.keys.some(k=>k.targetEmail===userEmail&&k.active) && !JSON.stringify(listedAgentKeys.data).includes(agentKey), 'admin key listing exposed secret or omitted issued key');
 const issuedAudit=await call('/api/admin/agent-audit',{token:admin.token});
@@ -66,7 +67,7 @@ assert(agentCreate.data.userId===loggedIn.user.id && agentCreate.data.accountPas
 const agentData=(await call('/api/agent/v1/data',{token:agentKey})).data;
 assert(agentData.accounts.some(a=>a.id===agentCreate.data.id&&a.accountPassword==='SyntheticServicePass!')&&!('tokens' in agentData)&&agentData.agentContext.userId===loggedIn.user.id,'agent data scope or credential access wrong');
 const stranger=authUser((await call('/api/auth/register',{method:'POST',body:{email:`stream-stranger-${Date.now()}@example.test`,password,name:'Synthetic stranger'},expect:201})).data);
-const strangerAgent=await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:stranger.user.email,label:'Other synthetic agent',expiresInDays:7},expect:201});
+const strangerAgent=await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:stranger.user.email,label:'Other synthetic agent'},expect:201});
 const strangerData=await call('/api/agent/v1/data',{token:strangerAgent.data.key});
 assert(strangerData.data.agentContext.userId===stranger.user.id&&!strangerData.data.accounts.some(a=>a.id===agentCreate.data.id),'API key leaked inventory across customers');
 await call('/api/agent/v1/accounts/'+agentCreate.data.id,{method:'DELETE',token:strangerAgent.data.key,expect:404});
@@ -209,6 +210,16 @@ await call('/api/backup/restore', { method: 'POST', token: loggedIn.token, body:
 let afterRestore = (await call('/api/data',{token:loggedIn.token})).data;
 assert(afterRestore.providers.some((x)=>x.name==='Synthetic Backup Marker') && afterRestore.settings.currency==='ARS', 'valid restore did not persist backup contents');
 
+// Subscription renewal also updates agent API expiry to the new entitlement date.
+const renewalAgent=(await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:userEmail,label:'Renewal synchronization test'}})).data;
+const renewalToken=(await call('/api/tokens/generate',{method:'POST',token:admin.token,body:{count:1,days:30}})).data.tokens[0].code;
+const expiryBeforeRenewal=(await call('/api/admin/agent-keys',{token:admin.token})).data.keys.find(k=>k.id===renewalAgent.agent.id).expiresAt;
+const agentRenewal=await call('/api/auth/redeem-token',{method:'POST',token:loggedIn.token,body:{tokenCode:renewalToken}});
+assert(agentRenewal.data.success,'synthetic subscription renewal failed');
+const keysAfterRenewal=(await call('/api/admin/agent-keys',{token:admin.token})).data.keys;
+assert(keysAfterRenewal.find(k=>k.id===renewalAgent.agent.id).expiresAt===agentRenewal.data.user.subscriptionUntil && Date.parse(agentRenewal.data.user.subscriptionUntil)>Date.parse(expiryBeforeRenewal),'agent API expiry did not extend with subscription token');
+await call('/api/agent/v1/data',{token:renewalAgent.key});
+await call('/api/admin/agent-keys/'+renewalAgent.agent.id,{method:'DELETE',token:admin.token});
 // Subscription tokens are one-time and entitlement state is server supplied.
 const redemption = await call('/api/auth/redeem-token', { method: 'POST', token: loggedIn.token, body: { userId: 'forged-owner', tokenCode: redeemCode } });
 assert(redemption.data.success && redemption.data.user.tokensRedeemed === 1, 'token redemption did not update entitlement');
