@@ -51,6 +51,8 @@ const loggedIn = authUser((await call('/api/auth/login', { method: 'POST', body:
 // Admin agent keys are bound to one existing customer and never expose the client's app password.
 await call('/api/tokens/generate', { method:'POST', token:loggedIn.token, body:{count:1,days:30}, expect:403 });
 await call('/api/admin/agent-keys', { method:'POST', token:loggedIn.token, body:{targetEmail:userEmail,label:'Forbidden agent'}, expect:403 });
+await call('/api/admin/agent-keys',{token:loggedIn.token,expect:403});
+await call('/api/admin/agent-audit',{token:loggedIn.token,expect:403});
 const issuedAgent = await call('/api/admin/agent-keys', { method:'POST', token:admin.token, body:{targetEmail:userEmail,label:'Synthetic sales agent',expiresInDays:7}, expect:201 });
 const agentKey=issuedAgent.data.key;
 assert(typeof agentKey==='string' && agentKey.startsWith('sf_agent_') && issuedAgent.data.agent.scopes.includes('data:write'), 'admin failed to issue scoped agent key');
@@ -67,6 +69,7 @@ const stranger=authUser((await call('/api/auth/register',{method:'POST',body:{em
 const strangerAgent=await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:stranger.user.email,label:'Other synthetic agent',expiresInDays:7},expect:201});
 const strangerData=await call('/api/agent/v1/data',{token:strangerAgent.data.key});
 assert(strangerData.data.agentContext.userId===stranger.user.id&&!strangerData.data.accounts.some(a=>a.id===agentCreate.data.id),'API key leaked inventory across customers');
+await call('/api/agent/v1/accounts/'+agentCreate.data.id,{method:'DELETE',token:strangerAgent.data.key,expect:404});
 await call('/api/data',{token:agentKey,expect:401});
 await call('/api/agent/v1/accounts/'+agentCreate.data.id,{method:'DELETE',token:agentKey});
 const keyId=issuedAgent.data.agent.id;
