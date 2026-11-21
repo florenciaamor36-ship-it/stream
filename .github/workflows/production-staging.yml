@@ -29,3 +29,10 @@ jobs:
         with:
           name: StreamFlowPro-production-web-staging
           path: dist/
+      - name: Bundle Worker without deploying it
+        run: npx --yes wrangler@4 deploy --dry-run --outdir worker-dist --config worker/wrangler.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamFlowPro-worker-bundle
+          path: worker-dist/
+          retention-days: 1
