@@ -48,6 +48,17 @@ assert(issuedState.tokens.some((t) => t.id === issuedToken.id && !t.code), 'issu
 const registered = authUser((await call('/api/auth/register', { method: 'POST', body: { email: userEmail, password, name: 'Synthetic User' }, expect: 201 })).data);
 await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password: 'Wrong-Synthetic-Password!' }, expect: 401 });
 const loggedIn = authUser((await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password } })).data);
+// Push subscriptions are user-owned and only accept Web Push endpoints and valid browser keys.
+const pushConfig = (await call('/api/push/public-key')).data;
+assert(pushConfig.enabled === true && pushConfig.publicKey, 'configured VAPID public key was not exposed');
+await call('/api/push/subscriptions', { method: 'POST', body: { endpoint: 'https://fcm.googleapis.com/fcm/send/synthetic', keys: { p256dh: 'invalid', auth: 'invalid' } }, expect: 401 });
+const pushEndpoint = `https://fcm.googleapis.com/fcm/send/synthetic-${Date.now()}`;
+const pushSub = await call('/api/push/subscriptions', { method: 'POST', token: loggedIn.token, body: { endpoint: pushEndpoint, keys: { p256dh: 'BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc', auth: 'Y2ktb25seS1hdXRoLWtleQ' } } });
+assert(pushSub.data.success === true, 'valid push subscription was not stored');
+await call('/api/push/subscriptions', { method: 'POST', token: loggedIn.token, body: { endpoint: 'http://127.0.0.1/private', keys: { p256dh: 'BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc', auth: 'Y2ktb25seS1hdXRoLWtleQ' } }, expect: 400 });
+await call('/api/push/subscriptions', { method: 'DELETE', token: loggedIn.token, body: { endpoint: pushEndpoint } });
+const unauthCron = await call('/__internal/push-daily', { method: 'POST', expect: 404 });
+assert(unauthCron.data.error, 'internal push cron endpoint is publicly reachable');
 const restoredSession = await call('/api/auth/me', { token: loggedIn.token });
 assert(restoredSession.data.success && restoredSession.data.user.email === userEmail && !('sessionToken' in restoredSession.data.user), 'persistent session restore endpoint failed or leaked token');
 const other = authUser((await call('/api/auth/register', { method: 'POST', body: { email: `stream-isolation-${Date.now()}@example.test`, password, name: 'Isolated User' }, expect: 201 })).data);

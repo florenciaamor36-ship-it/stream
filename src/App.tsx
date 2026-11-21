@@ -57,6 +57,7 @@ import { InstallAppPrompt } from './components/InstallAppPrompt';
 import { getDaysRemaining } from './lib/utils';
 import { notifyToast, requestConfirmation } from './lib/feedback';
 import { FeedbackLayer } from './FeedbackLayer';
+import { PushNotificationsSettings } from './components/PushNotificationsSettings';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -508,6 +509,8 @@ export default function App() {
           )}
 
           {currentTab === 'settings' && (
+            <>
+            <PushNotificationsSettings />
             <SettingsView
               user={user}
               onUserUpdated={setUser}
@@ -517,6 +520,7 @@ export default function App() {
               onAddCustomService={handleAddCustomService}
               onDeleteCustomService={handleDeleteCustomService}
             />
+            </>
           )}
 
           {currentTab === 'info' && <InfoView />}

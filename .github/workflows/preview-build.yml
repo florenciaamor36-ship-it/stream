@@ -20,7 +20,7 @@ jobs:
         run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
       - name: Run isolated Durable Object API smoke suite
         run: |
-          npx --yes wrangler@4 dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787 --persist-to /tmp/stream-flow-do-state --var 'ADMIN_EMAIL:stream-smoke-admin@example.test' --var 'BOOTSTRAP_ADMIN_SECRET:ci-only-synthetic-bootstrap-secret' > /tmp/stream-flow-wrangler.log 2>&1 &
+          npx --yes wrangler@4 dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787 --persist-to /tmp/stream-flow-do-state --var 'ADMIN_EMAIL:stream-smoke-admin@example.test' --var 'BOOTSTRAP_ADMIN_SECRET:ci-only-synthetic-bootstrap-secret' --var 'VAPID_PUBLIC_KEY:BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc' --var 'VAPID_PRIVATE_KEY:9jNTkH24k2sLB4hMRVoeOA0lNpVzEuCJIz7j_9eYwME' --var 'VAPID_SUBJECT:mailto:stream-smoke@example.test' --var 'PUSH_CRON_SECRET:ci-only-push-cron-secret-not-for-production' > /tmp/stream-flow-wrangler.log 2>&1 &
           echo $! > /tmp/stream-flow-wrangler.pid
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:8787/health >/dev/null; then break; fi

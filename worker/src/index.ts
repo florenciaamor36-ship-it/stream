@@ -1,9 +1,14 @@
+import { buildPushPayload, type PushSubscription, type VapidKeys } from '@block65/webcrypto-web-push';
 export interface Env {
   STORE: DurableObjectNamespace;
   STORE_KEY?: string;
   APP_ORIGIN?: string;
   ADMIN_EMAIL?: string;
   BOOTSTRAP_ADMIN_SECRET?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+  PUSH_CRON_SECRET?: string;
 }
 
 type User = {
@@ -69,6 +74,13 @@ function tokenCode(days: number) {
 function routeId(path: string) { return decodeURIComponent(path.split('/').filter(Boolean).at(-1) || ''); }
 
 export default {
+  async scheduled(_controller: { cron: string; scheduledTime: number }, env: Env): Promise<void> {
+    if (!env.PUSH_CRON_SECRET) return;
+    const id = env.STORE.idFromName(env.STORE_KEY || 'stream-flow-preview-smoke-2');
+    const stub = env.STORE.get(id);
+    const headers = new Headers({ 'x-stream-internal-cron': env.PUSH_CRON_SECRET });
+    await stub.fetch(new Request('https://internal/__internal/push-daily', { method: 'POST', headers }));
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = env.APP_ORIGIN || 'https://florenciaamor36-ship-it.github.io';
     const requestOrigin = request.headers.get('Origin');
@@ -81,6 +93,7 @@ export default {
     // Durable Object fetch has no RPC-style second argument; pass trusted metadata only on the internal request.
     const forwarded = new Request(request);
     const headers = new Headers(forwarded.headers);
+    headers.delete('x-stream-internal-cron');
     headers.set('x-stream-internal-origin', origin);
     if (env.ADMIN_EMAIL) headers.set('x-stream-internal-admin-email', env.ADMIN_EMAIL);
     else headers.delete('x-stream-internal-admin-email');
@@ -114,6 +127,16 @@ export class StreamFlowStore {
       if (request.method === 'POST' && path === '/api/auth/redeem-token') return await this.redeem(request, options.origin);
       if (request.method === 'POST' && path === '/api/auth/accept-terms') return await this.authMutation(request, options.origin, 'terms');
       if (request.method === 'POST' && path === '/api/auth/update-credentials') return await this.authMutation(request, options.origin, 'credentials', options.adminEmail);
+      if (request.method === 'GET' && path === '/api/push/public-key') {
+        if (!this.env.VAPID_PUBLIC_KEY || !this.env.VAPID_PRIVATE_KEY || !this.env.PUSH_CRON_SECRET) return json({ enabled: false }, 200, options.origin);
+        return json({ enabled: true, publicKey: this.env.VAPID_PUBLIC_KEY }, 200, options.origin);
+      }
+
+      if (request.method === 'POST' && path === '/__internal/push-daily') {
+        const supplied = request.headers.get('x-stream-internal-cron') || '';
+        if (!this.env.PUSH_CRON_SECRET || !constantTime(supplied, this.env.PUSH_CRON_SECRET)) return json({ error: 'Not found.' }, 404, options.origin);
+        return await this.sendDailyExpiryPushes(options.origin);
+      }
 
       const auth = await this.authenticate(request);
       if (!auth) return json({ error: ERROR.unauthorized }, 401, options.origin);
@@ -153,6 +176,8 @@ export class StreamFlowStore {
         const logs = this.sql.exec('SELECT id,user_id,user_email,token_fingerprint,status,created_at,details FROM audits ORDER BY created_at DESC LIMIT 300').toArray().map((a: any) => ({ id:a.id,userId:a.user_id,userEmail:a.user_email,tokenCode:a.token_fingerprint,status:a.status,timestamp:a.created_at,details:a.details }));
         return json({ success: true, logs }, 200, options.origin);
       }
+      if (path === '/api/push/subscriptions' && request.method === 'POST') return await this.savePushSubscription(request, user, options.origin);
+      if (path === '/api/push/subscriptions' && request.method === 'DELETE') return await this.deletePushSubscription(request, user, options.origin);
       if (path === '/api/backup/export' && request.method === 'GET') return this.exportData(user, options.origin);
       if (path === '/api/backup/restore' && request.method === 'POST') return await this.restoreData(request, user, options.origin);
       if (path === '/api/settings' && request.method === 'POST') return await this.saveSettings(request, user, options.origin);
@@ -170,6 +195,74 @@ export class StreamFlowStore {
       const saleStatus=(error as any)?.saleStatus; if(saleStatus)return json({error:message},saleStatus,options.origin);
       return json({ error: 'No se pudo completar la solicitud. Intentá de nuevo.' }, 500, options.origin);
     }
+  }
+
+  private async savePushSubscription(request: Request, user: User, origin: string) {
+    if (!this.env.VAPID_PUBLIC_KEY || !this.env.VAPID_PRIVATE_KEY || !this.env.PUSH_CRON_SECRET) return json({ error: 'Las notificaciones push todavía no están configuradas en el servidor.' }, 503, origin);
+    const b = await this.body(request);
+    const endpoint = typeof b.endpoint === 'string' ? b.endpoint.trim() : '';
+    const p256dh = typeof b.keys?.p256dh === 'string' ? b.keys.p256dh : '';
+    const auth = typeof b.keys?.auth === 'string' ? b.keys.auth : '';
+    let parsed: URL;
+    try { parsed = new URL(endpoint); } catch { return json({ error: 'Suscripción de notificaciones inválida.' }, 400, origin); }
+    const host = parsed.hostname.toLowerCase();
+    const allowedHost = host === 'fcm.googleapis.com' || host === 'updates.push.services.mozilla.com' || host.endsWith('.push.services.mozilla.com') || host === 'web.push.apple.com' || host.endsWith('.push.apple.com') || host.endsWith('.notify.windows.com');
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port && parsed.port !== '443' || endpoint.length > 2048 || !allowedHost || !/^[A-Za-z0-9_-]{80,100}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}$/.test(auth)) return json({ error: 'El navegador envió una suscripción de notificaciones inválida.' }, 400, origin);
+    const endpointHash = await sha256(endpoint);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
+    this.sql.exec('INSERT INTO push_subscriptions(user_id,endpoint_hash,endpoint,p256dh,auth,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,endpoint_hash) DO UPDATE SET endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth', user.id, endpointHash, endpoint, p256dh, auth, new Date().toISOString());
+    return json({ success: true }, 200, origin);
+  }
+
+  private async deletePushSubscription(request: Request, user: User, origin: string) {
+    const b = await this.body(request);
+    const endpoint = typeof b.endpoint === 'string' ? b.endpoint.trim() : '';
+    if (!endpoint || endpoint.length > 2048) return json({ error: 'Suscripción inválida.' }, 400, origin);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
+    this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint_hash=?', user.id, await sha256(endpoint));
+    return json({ success: true }, 200, origin);
+  }
+
+  private async sendDailyExpiryPushes(origin: string): Promise<Response> {
+    if (!this.env.VAPID_PUBLIC_KEY || !this.env.VAPID_PRIVATE_KEY) return json({ success: false, sent: 0, reason: 'push-not-configured' }, 503, origin);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions (user_id TEXT NOT NULL, endpoint_hash TEXT NOT NULL, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,endpoint_hash))`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push_deliveries (user_id TEXT NOT NULL, day_key TEXT NOT NULL, sent_at TEXT NOT NULL, PRIMARY KEY(user_id,day_key))`);
+    const today = new Date().toISOString().slice(0, 10);
+    const users = this.sql.exec('SELECT DISTINCT user_id FROM items WHERE kind=?', 'sales').toArray() as any[];
+    let sent = 0, stale = 0, failed = 0;
+    const vapid: VapidKeys = { subject: this.env.VAPID_SUBJECT || 'mailto:florenciaamor36@gmail.com', publicKey: this.env.VAPID_PUBLIC_KEY, privateKey: this.env.VAPID_PRIVATE_KEY };
+    for (const row of users) {
+      const userId = String(row.user_id);
+      if (this.sql.exec('SELECT user_id FROM push_deliveries WHERE user_id=? AND day_key=?', userId, today).toArray().length) continue;
+      const sales = this.sql.exec('SELECT body FROM items WHERE user_id=? AND kind=?', userId, 'sales').toArray() as any[];
+      const relevant = sales.map(r => JSON.parse(r.body)).filter((sale: any) => sale.status !== 'cancelled' && sale.endDate);
+      const expiring = relevant.filter((sale: any) => {
+        const target = new Date(String(sale.endDate));
+        const remaining = Math.floor((Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()) - Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())) / 86400000);
+        return remaining === 3 || remaining === 1 || remaining === 0;
+      });
+      if (!expiring.length) continue;
+      const subscriptions = this.sql.exec('SELECT endpoint_hash,endpoint,p256dh,auth FROM push_subscriptions WHERE user_id=?', userId).toArray() as any[];
+      if (!subscriptions.length) continue;
+      const title = expiring.length === 1 ? 'Un servicio está por vencer' : `${expiring.length} servicios están por vencer`;
+      const earliest = Math.min(...expiring.map((sale: any) => Math.max(0, Math.floor((Date.parse(`${String(sale.endDate).slice(0,10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000))));
+      const body = earliest === 0 ? 'Hay un servicio que vence hoy. Abrí Stream Flow Pro para ver el detalle.' : earliest === 1 ? 'Hay servicios que vencen mañana. Abrí Stream Flow Pro para ver el detalle.' : 'Hay servicios que vencen en los próximos 3 días. Abrí Stream Flow Pro para ver el detalle.';
+      const payload = { title, body, url: '/stream/?tab=expirations', tag: `expiry-${today}`, count: expiring.length };
+      let userSent = false;
+      for (const sub of subscriptions) {
+        try {
+          const subscription: PushSubscription = { endpoint: String(sub.endpoint), expirationTime: null, keys: { p256dh: String(sub.p256dh), auth: String(sub.auth) } };
+          const push = await buildPushPayload({ data: JSON.stringify(payload), options: { ttl: 86400, urgency: 'normal' } }, subscription, vapid);
+          const response = await fetch(subscription.endpoint, push);
+          if (response.status === 404 || response.status === 410) {
+            this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint_hash=?', userId, sub.endpoint_hash); stale++;
+          } else if (!response.ok) { failed++; }
+          else { sent++; userSent = true; }
+        } catch { failed++; }
+      }
+      if (userSent) this.sql.exec('INSERT OR IGNORE INTO push_deliveries(user_id,day_key,sent_at) VALUES(?,?,?)', userId, today, new Date().toISOString());
+    }
+    return json({ success: true, sent, stale, failed, day: today }, 200, origin);
   }
 
   private async body(request: Request) {

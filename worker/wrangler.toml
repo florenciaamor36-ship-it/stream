@@ -14,3 +14,6 @@ class_name = "StreamFlowStore"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["StreamFlowStore"]
+
+[triggers]
+crons = ["0 12 * * *"]
