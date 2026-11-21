@@ -56,7 +56,7 @@ await call('/api/admin/agent-audit',{token:loggedIn.token,expect:403});
 const issuedAgent = await call('/api/admin/agent-keys', { method:'POST', token:admin.token, body:{targetEmail:userEmail,label:'Synthetic sales agent',expiresInDays:365}, expect:201 });
 const agentKey=issuedAgent.data.key;
 assert(typeof agentKey==='string' && agentKey.startsWith('sf_agent_') && issuedAgent.data.agent.scopes.includes('data:write'), 'admin failed to issue scoped agent key');
-assert(issuedAgent.data.agent.expiresAt===loggedIn.user.subscriptionUntil,'agent API did not inherit the customer's subscription expiry');
+assert(issuedAgent.data.agent.expiresAt===loggedIn.user.subscriptionUntil,"agent API did not inherit the customer subscription expiry");
 const listedAgentKeys=await call('/api/admin/agent-keys',{token:admin.token});
 assert(listedAgentKeys.data.keys.some(k=>k.targetEmail===userEmail&&k.active) && !JSON.stringify(listedAgentKeys.data).includes(agentKey), 'admin key listing exposed secret or omitted issued key');
 const issuedAudit=await call('/api/admin/agent-audit',{token:admin.token});
