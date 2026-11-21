@@ -35,7 +35,26 @@ function removeStoredSessionToken() {
 }
 
 export async function clearApiSession() {
-  try { if (apiRemoteConfigured) await apiRequest('/api/auth/logout', { method: 'POST' }); } catch {}
+  try {
+    if (apiRemoteConfigured) {
+      let endpoint = '';
+      try {
+        const registration = await navigator.serviceWorker?.getRegistration('/stream/');
+        endpoint = (await registration?.pushManager.getSubscription())?.endpoint || '';
+      } catch { /* Logout must still complete if push APIs are unavailable. */ }
+      await apiRequest('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(endpoint ? { endpoint } : {}),
+      });
+      if (endpoint) {
+        try {
+          const registration = await navigator.serviceWorker?.getRegistration('/stream/');
+          await (await registration?.pushManager.getSubscription())?.unsubscribe();
+        } catch { /* The server-side subscription was removed with the session. */ }
+      }
+    }
+  } catch { /* Always clear local credentials, even if the server cannot be reached. */ }
   removeStoredSessionToken();
 }
 

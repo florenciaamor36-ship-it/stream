@@ -147,10 +147,13 @@ export class StreamFlowStore {
       if (path === '/api/notifications/expirations' && request.method === 'GET') return this.expirationNotificationSummary(user.id, options.origin);
       if (path === '/api/auth/me' && request.method === 'GET') return json({ success: true, user: this.enriched(user) }, 200, options.origin);
       if (path === '/api/auth/logout' && request.method === 'POST') {
-        // Push subscriptions belong to an authenticated account, not just this browser.
-        // Remove them before ending the session so another account on the same device
-        // cannot inherit reminders for the previous user's services.
-        this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=?', user.id);
+        // Remove only this browser's push subscription; other devices on the same
+        // account remain opted in. The endpoint is still scoped to the authenticated user.
+        const body = await this.body(request);
+        const endpoint = typeof body.endpoint === 'string' ? body.endpoint.trim() : '';
+        if (endpoint && endpoint.length <= 2048) {
+          this.sql.exec('DELETE FROM push_subscriptions WHERE user_id=? AND endpoint_hash=?', user.id, await sha256(endpoint));
+        }
         this.sql.exec('DELETE FROM sessions WHERE token_hash=?', auth.tokenHash);
         return json({ success: true }, 200, options.origin);
       }

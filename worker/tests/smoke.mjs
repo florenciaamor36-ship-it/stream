@@ -192,7 +192,7 @@ const logoutPushEndpoint = `https://fcm.googleapis.com/fcm/send/logout-${Date.no
 await call('/api/push/subscriptions', { method: 'POST', token: loggedIn.token, body: { endpoint: logoutPushEndpoint, keys: { p256dh: 'BPZaBnCPaI0TG4-5P5zIWxabVXepZBkbrCXybixFbiZ-CsWoL86bxndCcXGqjhG67NS-DqFSISFRCdqLQQaQ0sc', auth: 'Y2ktb25seS1hdXRoLWtleQ' } } });
 const beforeLogoutStatus = await call('/api/push/subscriptions/status', { method: 'POST', token: loggedIn.token, body: { endpoint: logoutPushEndpoint } });
 assert(beforeLogoutStatus.data.subscribed === true, 'logout test subscription was not active before logout');
-await call('/api/auth/logout', { method: 'POST', token: loggedIn.token });
+await call('/api/auth/logout', { method: 'POST', token: loggedIn.token, body: { endpoint: logoutPushEndpoint } });
 await call('/api/data', { token: loggedIn.token, expect: 401 });
 await call('/api/auth/me', { token: loggedIn.token, expect: 401 });
 const relogin = authUser((await call('/api/auth/login', { method: 'POST', body: { email: userEmail, password } })).data);
