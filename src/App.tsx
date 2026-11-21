@@ -114,6 +114,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!user) return;
     reloadData();
   }, [user]);
 

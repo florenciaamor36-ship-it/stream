@@ -1,0 +1,31 @@
+name: Production wiring staging build
+on:
+  workflow_dispatch:
+  push:
+    branches: ["release/production-web-staging"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Run isolated API smoke tests
+        run: |
+          npx --yes wrangler@4 dev --config worker/wrangler.toml --ip 127.0.0.1 --port 8787 --persist-to /tmp/stream-flow-staging --var 'ADMIN_EMAIL:stream-smoke-admin@example.test' --var 'BOOTSTRAP_ADMIN_SECRET:ci-only-synthetic-bootstrap-secret' > /tmp/wrangler.log 2>&1 &
+          echo $! > /tmp/wrangler.pid
+          for attempt in $(seq 1 60); do curl --fail --silent http://127.0.0.1:8787/health >/dev/null && break; sleep 1; done
+          STREAM_API_URL=http://127.0.0.1:8787 node worker/tests/smoke.mjs
+          kill $(cat /tmp/wrangler.pid) || true
+      - name: Build production-configured website
+        run: npm run build
+        env:
+          VITE_STREAM_API_URL: https://stream-flow-api.tiendasshoficial.workers.dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamFlowPro-production-web-staging
+          path: dist/
