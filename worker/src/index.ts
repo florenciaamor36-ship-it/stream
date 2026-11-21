@@ -279,6 +279,10 @@ export class StreamFlowStore {
     const match=path.match(/^\/api\/agent\/v1\/(providers|accounts|customers|sales|templates|custom-services)(?:\/([^/]+)(?:\/renew)?)?$/);
     if(!match) { audit(404); return json({error:'Ruta de agente no encontrada.'},404,origin); }
     const kind=match[1]==='custom-services'?'customServices':match[1], rest=path.slice('/api/agent/v1/'.length), mappedPath='/api/'+rest.replace(/^custom-services/, 'custom-services');
+    if(match[2]) {
+      const ownItem=this.sql.exec('SELECT id FROM items WHERE user_id=? AND kind=? AND id=?',user.id,kind,decodeURIComponent(match[2])).toArray()[0];
+      if(!ownItem) { audit(404); return json({error:'No se encontró el registro en la cuenta vinculada.'},404,origin); }
+    }
     const mapped=new Request(new URL(mappedPath,request.url),request);
     const response=await this.collection(mapped,user,kind,match[2]?decodeURIComponent(match[2]):undefined,origin,path.endsWith('/renew'));
     audit(response.status); return response;
