@@ -211,7 +211,7 @@ let afterRestore = (await call('/api/data',{token:loggedIn.token})).data;
 assert(afterRestore.providers.some((x)=>x.name==='Synthetic Backup Marker') && afterRestore.settings.currency==='ARS', 'valid restore did not persist backup contents');
 
 // Subscription renewal also updates agent API expiry to the new entitlement date.
-const renewalAgent=(await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:userEmail,label:'Renewal synchronization test'}})).data;
+const renewalAgent=(await call('/api/admin/agent-keys',{method:'POST',token:admin.token,body:{targetEmail:userEmail,label:'Renewal synchronization test'},expect:201})).data;
 const renewalToken=(await call('/api/tokens/generate',{method:'POST',token:admin.token,body:{count:1,days:30}})).data.tokens[0].code;
 const expiryBeforeRenewal=(await call('/api/admin/agent-keys',{token:admin.token})).data.keys.find(k=>k.id===renewalAgent.agent.id).expiresAt;
 const agentRenewal=await call('/api/auth/redeem-token',{method:'POST',token:loggedIn.token,body:{tokenCode:renewalToken}});
@@ -222,7 +222,7 @@ await call('/api/agent/v1/data',{token:renewalAgent.key});
 await call('/api/admin/agent-keys/'+renewalAgent.agent.id,{method:'DELETE',token:admin.token});
 // Subscription tokens are one-time and entitlement state is server supplied.
 const redemption = await call('/api/auth/redeem-token', { method: 'POST', token: loggedIn.token, body: { userId: 'forged-owner', tokenCode: redeemCode } });
-assert(redemption.data.success && redemption.data.user.tokensRedeemed === 1, 'token redemption did not update entitlement');
+assert(redemption.data.success && redemption.data.user.tokensRedeemed === 2, 'token redemption did not update entitlement');
 await call('/api/auth/redeem-token', { method: 'POST', token: registered.token, body: { tokenCode: redeemCode }, expect: 400 });
 const logs = (await call('/api/tokens/audit-logs', { token: admin.token })).data.logs;
 assert(Array.isArray(logs) && logs.some((x) => x.status === 'SUCCESS'), 'token audit missing');
